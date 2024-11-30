@@ -1,8 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
+use atrium_api::agent::store::MemorySessionStore;
+use atrium_api::agent::AtpAgent;
 use atrium_api::app::bsky::feed::defs::FeedViewPost;
-use atrium_api::client::AtpServiceClient;
 use atrium_api::types::LimitedNonZeroU8;
 use atrium_api::types::{
     string::{Did, Handle},
@@ -52,7 +53,8 @@ pub enum ApiError {
 
 
 pub struct API {
-    client: AtpServiceClient<ReqwestClient>,
+    agent: AtpAgent<MemorySessionStore, ReqwestClient>,
+    // client: AtpServiceClient<ReqwestClient>,
     session_data: Option<SessionData>,
 }
 
@@ -102,7 +104,10 @@ fn is_token_expired(token: &str) -> bool {
 impl API {
     pub async fn new() -> Self {
         Self {
-            client: AtpServiceClient::new(ReqwestClient::new(DEFAULT_PDS)),
+            agent: AtpAgent::new(
+                ReqwestClient::new("https://bsky.social"),
+            MemorySessionStore::default(),
+            ),
             session_data: None,
         }
     }
@@ -119,8 +124,8 @@ impl API {
         let session = self.session_data.as_mut()
             .ok_or(ApiError::NotAuthenticated)?;
     
-        match self.client
-            .service
+        match self.agent
+            .api
             .com
             .atproto
             .server
@@ -155,8 +160,8 @@ impl API {
     }
 
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
-        match self.client
-            .service
+        match self.agent
+            .api
             .com
             .atproto
             .server
@@ -206,7 +211,7 @@ impl API {
             extra_data: Ipld::Null,
         };
 
-        match self.client.service.app.bsky.feed.get_timeline(parameters).await {
+        match self.agent.api.app.bsky.feed.get_timeline(parameters).await {
             Ok(response) => Ok((response.data.feed, response.data.cursor)),
             Err(e) => {
                 match e {
