@@ -62,7 +62,6 @@ fn is_token_expired(token: &str) -> bool {
     // Split JWT into parts
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
-        println!("Invalid JWT format");
         return true;
     }
 
@@ -77,23 +76,23 @@ fn is_token_expired(token: &str) -> bool {
                                 .duration_since(UNIX_EPOCH)
                                 .unwrap()
                                 .as_secs() as i64;
-                            println!("Token expires at: {}, current time: {}", exp, now);
+                            // println!("Token expires at: {}, current time: {}", exp, now);
                             exp <= now
                         }
                         None => {
-                            println!("No exp claim found");
+                            // println!("No exp claim found");
                             true
                         }
                     }
                 }
                 Err(e) => {
-                    println!("Failed to parse claims JSON: {}", e);
+                    // println!("Failed to parse claims JSON: {}", e);
                     true
                 }
             }
         }
         Err(e) => {
-            println!("Failed to decode base64: {}", e);
+            // println!("Failed to decode base64: {}", e);
             true
         }
     }
@@ -112,12 +111,18 @@ impl API {
         }
     }
 
-    pub fn is_authenticated(&self) -> bool {
-        if let Some(session) = &self.session_data {
-            !is_token_expired(&session.access_jwt)
+    pub async fn is_authenticated(&self) -> bool {
+        if let Err(e) = self.agent.api.com.atproto.server.get_session().await {
+            print!("{:?}", e);
+            return false;
         } else {
-            false
+            return true;
         }
+        // if let Some(session) = &self.session_data {
+        //     !is_token_expired(&session.access_jwt)
+        // } else {
+        //     false
+        // }
     }
 
     pub async fn refresh_session(&mut self) -> Result<()> {
@@ -160,20 +165,21 @@ impl API {
     }
 
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
-        match self.agent
-            .api
-            .com
-            .atproto
-            .server
-            .create_session(
-                atrium_api::com::atproto::server::create_session::InputData {
-                    auth_factor_token: None,
-                    identifier: identifier.clone(),
-                    password: password.expose_secret().to_string().clone(),
-                }
-                .into(),
-            )
-            .await {
+        // match self.agent
+        //     .api
+        //     .com
+        //     .atproto
+        //     .server
+        //     .create_session(
+        //         atrium_api::com::atproto::server::create_session::InputData {
+        //             auth_factor_token: None,
+        //             identifier: identifier.clone(),
+        //             password: password.expose_secret().to_string().clone(),
+        //         }
+        //         .into(),
+        //     )
+        //     .await {
+        match self.agent.login(identifier, password.expose_secret().to_string()).await {
                 Ok(response) => {
                     self.session_data = Some(SessionData {
                         access_jwt: response.data.access_jwt,
@@ -183,6 +189,7 @@ impl API {
                         handle: response.data.handle,
                         refresh_jwt: response.data.refresh_jwt,
                     });
+
                     Ok(())
                 },
                 Err(e) => {
@@ -197,7 +204,7 @@ impl API {
 
 
     pub async fn get_timeline(&self, cursor: Option<String>) -> Result<(Vec<FeedViewPost>, Option<String>)> {
-        if !self.is_authenticated() {
+        if !self.is_authenticated().await {
             return Err(ApiError::NotAuthenticated.into());
         }
 
@@ -238,12 +245,12 @@ mod tests {
         let identifier = std::env::var("BSKY_IDENTIFIER")?;
         let password = SecretString::new(std::env::var("BSKY_PASSWORD")?.into());
         
-        println!("Before login: authenticated = {:?}", api.is_authenticated());
+        println!("Before login: authenticated = {:?}", api.is_authenticated().await);
         api.login(identifier, password).await?;
-        println!("After login: authenticated = {:?}", api.is_authenticated());
+        println!("After login: authenticated = {:?}", api.is_authenticated().await);
         println!("Session data present: {}", api.session_data.is_some());
         
-        assert!(api.is_authenticated());
+        assert!(api.is_authenticated().await);
         Ok(())
     }
 

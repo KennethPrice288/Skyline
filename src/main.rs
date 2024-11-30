@@ -26,20 +26,16 @@ async fn run() -> Result<()> {
     // Create app and run it
     let identifier = std::env::var("BSKY_IDENTIFIER")?;
     let password = SecretString::new(std::env::var("BSKY_PASSWORD")?.into());
+    print!("Logging into Skyline . . .");
     let mut api = API::new().await;
     
-    println!("Before login: authenticated = {}", api.is_authenticated());
     api.login(identifier, password).await?;
-    println!("After login: authenticated = {}", api.is_authenticated());
     
     let mut app = App::new(api);
-    println!("Before loading posts: authenticated = {}", app.api.is_authenticated());
     app.load_initial_posts().await;
-    println!("After loading posts: error = {:?}", app.error);
-    println!("authenticated = {}", app.api.is_authenticated());
 
     loop {
-        terminal.draw(|f| draw(f, &app))?;  // Changed this line
+        terminal.draw(|f| draw(f, &mut app))?;  // Changed this line
 
         if let Event::Key(key) = event::read()? {
             match key.code {

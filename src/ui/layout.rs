@@ -17,17 +17,24 @@ pub fn draw(f: &mut Frame, app: &App) {
     let post_height = 6;
     let visible_posts = (posts_chunk.height / post_height) as usize;
 
-    for (i, post) in app.posts.iter()
+    // Create constraints for all visible posts
+    let constraints: Vec<Constraint> = std::iter::repeat(Constraint::Length(post_height))
+        .take(visible_posts)
+        .collect();
+
+    // Split the chunk into multiple areas
+    let post_areas = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(posts_chunk);
+
+    for (i, (post, area)) in app.posts.iter()
         .skip(app.selected_index.saturating_sub(visible_posts/2))
         .take(visible_posts)
+        .zip(post_areas.iter())
         .enumerate() 
-    {
-        let post_area = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(post_height)])
-            .split(posts_chunk)[0];
-        
-        render_post(f, post, post_area, i == app.selected_index);
+    {    
+        render_post(f, post, *area, i == app.selected_index);
     }
 
     // Render status line
