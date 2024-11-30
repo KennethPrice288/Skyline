@@ -11,6 +11,7 @@ anyhow = "1.0.93"
 atrium-api = "0.24.8"
 atrium-xrpc-client = { version = "0.5.10", features = ["reqwest"] }
 base64 = "0.22.1"
+chrono = "0.4.38"
 ipld-core = "0.4.1"
 mockall = "0.13.1"
 ratatui = "0.29.0"

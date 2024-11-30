@@ -2208,6 +2208,7 @@ dependencies = [
  "atrium-api",
  "atrium-xrpc-client",
  "base64 0.22.1",
+ "chrono",
  "ipld-core",
  "mockall",
  "ratatui",

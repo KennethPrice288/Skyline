@@ -10,6 +10,7 @@ use atrium_api::app::bsky::feed::defs::FeedViewPost;
 use atrium_api::types::Unknown;
 use std::fs::OpenOptions;
 use std::io::Write;
+use chrono::{FixedOffset, Local};
 
 fn log_debug(msg: &str) {
     if let Ok(mut file) = OpenOptions::new()
@@ -47,6 +48,13 @@ pub fn render_post(f: &mut Frame, post: &FeedViewPost, area: Rect, selected: boo
 
     let author_handle = author.handle.to_string();
     let author_display_name = author.display_name.clone().unwrap_or(author_handle.clone());
+
+    let mut time_posted = &post.post.indexed_at;
+    let fixed_offset: &chrono::DateTime<FixedOffset> = time_posted.as_ref();
+    let local_time: chrono::DateTime<Local> = fixed_offset.with_timezone(&Local);
+
+    let formatted_time = local_time.format("%Y-%m-%d %-I:%M %p").to_string();
+
     let header = Line::from(vec![
         Span::styled(
             &author_display_name,
@@ -54,8 +62,9 @@ pub fn render_post(f: &mut Frame, post: &FeedViewPost, area: Rect, selected: boo
         ),
         Span::raw(" @"),
         Span::raw(&author_handle),
+        Span::raw(" posted at "),
+        Span::raw(formatted_time),
     ]);
-
     let content = Line::from(post_text);
 
     let stats = {
