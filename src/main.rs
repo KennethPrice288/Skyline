@@ -24,30 +24,27 @@ async fn run() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Create app and run it
-    let identifier = std::env::var("BSKY_IDENTIFIER")?;
-    let password = SecretString::new(std::env::var("BSKY_PASSWORD")?.into());
-    print!("Logging into Skyline . . .");
-    let mut api = API::new().await;
-    
-    api.login(identifier, password).await?;
-    
+    let api = API::new().await;
     let mut app = App::new(api);
+    app.loading = true;
+    terminal.draw(|f| draw(f, &mut app))?;
+    if let Some(_session) = app.api.agent.get_session().await {
+    } else {
+        let identifier = std::env::var("BSKY_IDENTIFIER")?;
+        let password = SecretString::new(std::env::var("BSKY_PASSWORD")?.into());
+        app.login(identifier, password).await?;
+    }
     app.load_initial_posts().await;
+    app.loading = false;
 
     loop {
-        terminal.draw(|f| draw(f, &mut app))?;  // Changed this line
-
+        terminal.draw(|f| draw(f, &mut app))?;
+    
         if let Event::Key(key) = event::read()? {
-            match key.code {
-                KeyCode::Char('q') => break,
-                KeyCode::Char('j') => {
-                    app.selected_index = app.selected_index.saturating_add(1);
-                }
-                KeyCode::Char('k') => {
-                    app.selected_index = app.selected_index.saturating_sub(1);
-                }
-                _ => {}
+            if key.code == KeyCode::Char('q') {
+                break;
             }
+            app.handle_input(key.code);
         }
     }
 

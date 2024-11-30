@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
@@ -18,8 +19,10 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde_json::Value;
 
+use super::auth::FileSessionStore;
 
-pub const DEFAULT_PDS: &str = "https://bsky.social";
+
+pub const DEFAULT_PDS: &str = "public.api.bsky.app";
 
 pub struct SessionData {
     pub access_jwt: String,
@@ -53,7 +56,7 @@ pub enum ApiError {
 
 
 pub struct API {
-    agent: AtpAgent<MemorySessionStore, ReqwestClient>,
+    pub agent: AtpAgent<FileSessionStore, ReqwestClient>,
     // client: AtpServiceClient<ReqwestClient>,
     session_data: Option<SessionData>,
 }
@@ -102,11 +105,12 @@ fn is_token_expired(token: &str) -> bool {
 
 impl API {
     pub async fn new() -> Self {
+        let agent = AtpAgent::new(
+            ReqwestClient::new("https://bsky.social"),
+            super::auth::FileSessionStore::new(PathBuf::from("session.json")),
+        );
         Self {
-            agent: AtpAgent::new(
-                ReqwestClient::new("https://bsky.social"),
-            MemorySessionStore::default(),
-            ),
+            agent,
             session_data: None,
         }
     }
@@ -165,20 +169,6 @@ impl API {
     }
 
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
-        // match self.agent
-        //     .api
-        //     .com
-        //     .atproto
-        //     .server
-        //     .create_session(
-        //         atrium_api::com::atproto::server::create_session::InputData {
-        //             auth_factor_token: None,
-        //             identifier: identifier.clone(),
-        //             password: password.expose_secret().to_string().clone(),
-        //         }
-        //         .into(),
-        //     )
-        //     .await {
         match self.agent.login(identifier, password.expose_secret().to_string()).await {
                 Ok(response) => {
                     self.session_data = Some(SessionData {
@@ -195,8 +185,8 @@ impl API {
                 Err(e) => {
                     match e {
                         _ if e.to_string().contains("Invalid password") => 
-                            Err(ApiError::InvalidCredentials.into()),
-                        _ => Err(ApiError::NetworkError(e.to_string()).into())
+                        Err(ApiError::InvalidCredentials.into()),
+                        _ => {Err(ApiError::NetworkError(e.to_string()).into())}
                     }
                 }
             }

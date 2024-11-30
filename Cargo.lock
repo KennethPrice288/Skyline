@@ -2214,6 +2214,7 @@ dependencies = [
  "ratatui-image",
  "reqwest",
  "secrecy",
+ "serde",
  "serde_json",
  "thiserror 2.0.3",
  "tokio",
