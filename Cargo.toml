@@ -1,0 +1,19 @@
+[package]
+name = "skyline"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.93"
+atrium-api = "0.24.8"
+atrium-xrpc-client = { version = "0.5.10", features = ["reqwest"] }
+jsonwebtoken = "9.3.0"
+mockall = "0.13.1"
+ratatui = "0.29.0"
+ratatui-image = "3.0.0"
+reqwest = "0.12.9"
+secrecy = "0.10.3"
+tokio = { version = "1.28.0", features = ["full"] }
+tokio-macros = "2.1.0"
+viuer = "0.9.1"
+
