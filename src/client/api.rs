@@ -122,11 +122,6 @@ impl API {
         } else {
             return true;
         }
-        // if let Some(session) = &self.session_data {
-        //     !is_token_expired(&session.access_jwt)
-        // } else {
-        //     false
-        // }
     }
 
     pub async fn refresh_session(&mut self) -> Result<()> {

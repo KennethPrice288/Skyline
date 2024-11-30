@@ -79,11 +79,25 @@ impl App {
         self.loading = false;
     }
 
-    pub fn handle_input(&mut self, key: KeyCode) {
+    pub async fn scroll(&mut self) {
+        match self.api.get_timeline(self.cursor.clone()).await {
+            Ok((posts, cursor)) => {
+                self.posts.extend(posts);
+                self.cursor = cursor;
+            } 
+            Err(e) => {
+                println!("{:?}", e);
+            }
+        }
+    }
+
+    pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
                 if self.selected_index < self.posts.len() - 1 {
                     self.selected_index += 1;
+                } else {
+                    self.scroll().await;
                 }
             },
             KeyCode::Char('k') => {

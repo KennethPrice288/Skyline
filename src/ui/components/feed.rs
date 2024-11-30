@@ -27,12 +27,15 @@ pub fn render_feed(f: &mut Frame, app: &mut App) {
         .zip(post_areas.iter())
         .enumerate()
     {
+        //Highlighted index is the same as selected index
         let mut highlight_index = app.selected_index;
+        //Until we scroll down, then it should be the second to last post
         if app.selected_index > app.visible_posts - 2 {
-            if app.selected_index == app.posts.len() - 2 {
-                highlight_index = app.visible_posts;
-            } else {
+            if app.selected_index != app.posts.len() - 2 {
                 highlight_index = app.visible_posts - 2;
+                //But if we're at the bottom then it can be the last one
+            } else {
+                highlight_index = app.visible_posts;
             }
         }
         render_post(f, post, *area, i == highlight_index);

@@ -44,7 +44,7 @@ async fn run() -> Result<()> {
             if key.code == KeyCode::Char('q') {
                 break;
             }
-            app.handle_input(key.code);
+            app.handle_input(key.code).await;
         }
     }
 

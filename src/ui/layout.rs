@@ -15,7 +15,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     } else if let Some(err) = &app.error {
         err
     } else {
-        &format!("Press q to quit, j/k to navigate {} / {}", app.selected_index + 1, app.posts.len())
+        &format!("Press q to quit, j/k to navigate, r to refresh {} / {}", app.selected_index + 1, app.posts.len())
     };
 
     f.render_widget(
