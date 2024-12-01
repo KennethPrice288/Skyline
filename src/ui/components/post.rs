@@ -27,7 +27,7 @@ impl StatefulWidget for Post {
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let block = Block::default()
         .borders(Borders::ALL)
-        .style(Style::default().fg(if state.selected { Color::Yellow } else { Color::White }));
+        .style(Style::default().fg(if state.selected { Color::Blue } else { Color::White }));
         let author = &self.post.post.author;
         
         // Debug the record content
@@ -64,7 +64,10 @@ impl StatefulWidget for Post {
             ),
             Span::raw(" @"),
             Span::raw(&author_handle),
-            Span::raw(" posted at "),
+            Span::styled("
+                 posted at ",
+                Style::default().add_modifier(Modifier::BOLD)
+            ),
             Span::raw(formatted_time),
         ]);
         let content = Line::from(post_text);
@@ -90,13 +93,17 @@ impl StatefulWidget for Post {
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(2), Constraint::Length(1)])
+            .constraints([
+                Constraint::Length(1),  // Header
+                Constraint::Min(1),     // Content
+                Constraint::Length(1)   // Stats
+            ])
             .split(inner_area);
 
         block.render(area, buf);
         header.render(chunks[0], buf);
-        content.render(chunks[0], buf);
-        stats.render(chunks[1], buf);
+        content.render(chunks[1], buf);
+        stats.render(chunks[2], buf);
 
     }
 }

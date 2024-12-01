@@ -9,10 +9,6 @@ use super::components::feed::Feed;
 
 pub struct App {
     pub api: API,
-    pub posts: VecDeque<FeedViewPost>,
-    pub cursor: Option<String>,
-    pub visible_posts: usize,
-    pub selected_index: usize,
     pub loading: bool,
     pub error: Option<String>,
     pub feed: Feed,
@@ -22,12 +18,9 @@ impl App {
     pub fn new(api: API) -> Self {
         Self {
             api,
-            posts: VecDeque::new(),
-            cursor: None,
-            visible_posts: 0,
-            selected_index: 0,
             loading: false,
             error: None,
+            feed: Feed::new(),
         }
     }
     
@@ -37,34 +30,22 @@ impl App {
 
     pub async fn load_initial_posts(&mut self) {
         self.loading = true;
-        
+        self.feed.load_initial_posts(&mut self.api).await.unwrap();
         self.loading = false;
-    }
-
-    pub async fn scroll(&mut self) {
-        match self.api.get_timeline(self.cursor.clone()).await {
-            Ok((posts, cursor)) => {
-                self.posts.extend(posts);
-                self.cursor = cursor;
-            } 
-            Err(e) => {
-                println!("{:?}", e);
-            }
-        }
     }
 
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
-                if self.selected_index < self.posts.len() - 1 {
-                    self.selected_index += 1;
+                if self.feed.selected_index < self.feed.posts.len() - 1 {
+                    self.feed.selected_index += 1;
                 } else {
-                    self.scroll().await;
+                    self.feed.scroll(&self.api).await;
                 }
             },
             KeyCode::Char('k') => {
-                if self.selected_index > 0 {
-                    self.selected_index -= 1;
+                if self.feed.selected_index > 0 {
+                    self.feed.selected_index -= 1;
                 }
             },
             _ => {}

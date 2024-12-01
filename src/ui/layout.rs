@@ -1,13 +1,13 @@
 use ratatui::{Frame, layout::{Constraint, Direction, Layout}, widgets::Paragraph};
 use crate::ui::App;
 
-pub fn draw<B: ratatui::backend::Backend>(f: &mut Frame<B>, app: &mut App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(f.area());
 
-    app.feed.render(chunks[0], f);
+    f.render_widget(&app.feed, chunks[0]);
 
     let status = if app.loading {
         "Loading..."

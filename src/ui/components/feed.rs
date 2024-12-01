@@ -10,6 +10,8 @@ use crate::client::api::{ApiError, API};
 
 use super::post::PostState;
 
+const POST_HEIGHT: u16 = 6;
+
 pub struct Feed {
     pub posts: VecDeque<FeedViewPost>,
     pub cursor: Option<String>,
@@ -28,9 +30,13 @@ impl Feed {
     }
     
     fn get_highlighted_index(&self) -> usize {
-        if self.selected_index > self.visible_posts - 2 {
-            if self.selected_index != self.posts.len() - 2 {
-                self.visible_posts - 2
+        if self.visible_posts < 2 {
+            return 0;
+        }
+    
+        if self.selected_index > self.visible_posts.saturating_sub(2) {
+            if self.selected_index != self.posts.len().saturating_sub(2) {
+                self.visible_posts.saturating_sub(2)
             } else {
                 self.visible_posts
             }
@@ -83,27 +89,32 @@ impl Feed {
     }
 
     pub async fn scroll(&mut self, api: &API) {
-        // Implementation to load more posts
+        match api.get_timeline(self.cursor.clone()).await {
+            Ok((posts, cursor)) => {
+                self.posts.extend(posts);
+                self.cursor = cursor;
+            } 
+            Err(e) => {
+                println!("{:?}", e);
+            }
+        }
     }
 
-    pub fn handle_input(&mut self, key: KeyCode) {
-        // Implementation to handle user input and update selected index
-    }
 }
 
-impl Widget for Feed {
-    fn render(mut self, area: Rect, buf: &mut Buffer) {
+impl Widget for &Feed {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(1)])
             .split(area);
 
         let posts_chunk = chunks[0];
-        let post_height = 6;
-        self.visible_posts = (posts_chunk.height / post_height) as usize;
+        let post_height = POST_HEIGHT;
+        let visible_posts = (posts_chunk.height / post_height) as usize;
 
         let constraints: Vec<Constraint> = std::iter::repeat(Constraint::Length(post_height))
-            .take(self.visible_posts)
+            .take(visible_posts)
             .collect();
 
         let post_areas = Layout::default()
@@ -111,17 +122,18 @@ impl Widget for Feed {
             .constraints(constraints)
             .split(posts_chunk);
 
+        let start_index = self.selected_index.saturating_sub(self.visible_posts.saturating_sub(2));
+
         for (i, (post, area)) in self.posts.iter()
-            .skip(self.selected_index.saturating_sub(self.visible_posts - 2))
-            .take(self.visible_posts)
+            .skip(self.selected_index.saturating_sub(visible_posts - 2))
+            .take(visible_posts)
             .zip(post_areas.iter())
             .enumerate()
         {
-            let highlight_index = self.get_highlighted_index();
             let post_component = super::post::Post::new(post.clone());
 
             post_component.render(*area, buf, &mut PostState {
-                selected: highlight_index == i,
+                selected: self.selected_index == (start_index + i),
                 liked: false,
                 reposted: false,
             });
