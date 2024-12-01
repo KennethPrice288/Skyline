@@ -5,6 +5,8 @@ use secrecy::SecretString;
 use std::collections::VecDeque;
 use anyhow::Result;
 
+use super::components::feed::Feed;
+
 pub struct App {
     pub api: API,
     pub posts: VecDeque<FeedViewPost>,
@@ -13,6 +15,7 @@ pub struct App {
     pub selected_index: usize,
     pub loading: bool,
     pub error: Option<String>,
+    pub feed: Feed,
 }
 
 impl App {
@@ -35,47 +38,6 @@ impl App {
     pub async fn load_initial_posts(&mut self) {
         self.loading = true;
         
-        let timeline_result = self.api.get_timeline(None).await;
-        match timeline_result {
-            Ok((posts, cursor)) => {
-                self.posts.extend(posts);
-                self.cursor = cursor;
-                self.error = None;
-            }
-            Err(e) => {
-                // Try to determine if this is an authentication error
-                if let Some(api_error) = e.downcast_ref::<ApiError>() {
-                    match api_error {
-                        ApiError::SessionExpired | ApiError::NotAuthenticated => {
-                            // Try to refresh and retry
-                            match self.api.refresh_session().await {
-                                Ok(_) => {
-                                    // Retry getting timeline
-                                    match self.api.get_timeline(None).await {
-                                        Ok((posts, cursor)) => {
-                                            self.posts.extend(posts);
-                                            self.cursor = cursor;
-                                            self.error = None;
-                                        }
-                                        Err(e) => {
-                                            self.error = Some(format!("Failed after refresh: {}", e));
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    self.error = Some(format!("Refresh failed: {}", e));
-                                }
-                            }
-                        }
-                        _ => {
-                            self.error = Some(e.to_string());
-                        }
-                    }
-                } else {
-                    self.error = Some(e.to_string());
-                }
-            }
-        }
         self.loading = false;
     }
 
