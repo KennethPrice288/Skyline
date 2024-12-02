@@ -21,6 +21,7 @@ pub struct App {
     pub loading: bool,
     pub error: Option<String>,
     pub feed: Feed,
+    pub status_line: String,
 }
 
 impl App {
@@ -30,6 +31,7 @@ impl App {
             loading: false,
             error: None,
             feed: Feed::new(),
+            status_line: "".to_string(),
         }
     }
 
@@ -46,17 +48,13 @@ impl App {
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
-                if self.feed.selected_index < self.feed.posts.len() - 1 {
-                    self.feed.selected_index += 1;
-                } else {
+                self.feed.scroll_down();
+                // Only fetch more posts if we're near the end
+                if self.feed.selected_index >= self.feed.posts.len().saturating_sub(5) {
                     self.feed.scroll(&self.api).await;
                 }
             }
-            KeyCode::Char('k') => {
-                if self.feed.selected_index > 0 {
-                    self.feed.selected_index -= 1;
-                }
-            }
+            KeyCode::Char('k') => self.feed.scroll_up(),
             _ => {}
         }
     }
@@ -136,4 +134,18 @@ impl App {
         terminal.show_cursor()?;
         Ok(())
     }
+
+    pub fn update_status(&mut self, _area_height: u16) {
+        self.status_line = self.feed.status_line.clone().unwrap_or("".to_string());
+        // let stats = self.feed.get_render_stats(area_height);
+        // self.status_line = format!(
+        //     "scroll: {}, sel: {}, area: {}, rendered: {}, posts: {}", 
+        //     self.feed.scroll_offset,
+        //     self.feed.selected_index,
+        //     stats.area_height,
+        //     stats.total_height,
+        //     stats.visible_posts
+        // );
+    }
+
 }
