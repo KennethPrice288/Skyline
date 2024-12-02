@@ -1,21 +1,18 @@
-use crate::client::api::{ApiError, API};
-use atrium_api::app::bsky::feed::defs::FeedViewPost;
+use crate::client::api::API;
+use anyhow::Result;
 use ratatui::crossterm::{event::KeyCode, terminal::EnterAlternateScreen};
 use secrecy::SecretString;
-use std::collections::VecDeque;
 use std::time::{Duration, Instant};
-use anyhow::Result;
 
 use super::components::feed::Feed;
 
-use ratatui::{Terminal, backend::Backend};
 use ratatui::crossterm::{
     event::{self, Event},
-    terminal::{disable_raw_mode, enable_raw_mode, LeaveAlternateScreen},
     execute,
+    terminal::{disable_raw_mode, enable_raw_mode, LeaveAlternateScreen},
 };
-use std::io::{self, Stdout, Write};
-use tokio::signal;
+use ratatui::{backend::Backend, Terminal};
+use std::io::{self, Write};
 
 use crate::ui::draw;
 
@@ -35,7 +32,7 @@ impl App {
             feed: Feed::new(),
         }
     }
-    
+
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
         self.api.login(identifier, password).await
     }
@@ -54,12 +51,12 @@ impl App {
                 } else {
                     self.feed.scroll(&self.api).await;
                 }
-            },
+            }
             KeyCode::Char('k') => {
                 if self.feed.selected_index > 0 {
                     self.feed.selected_index -= 1;
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -102,7 +99,7 @@ impl App {
     async fn event_loop<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
         let tick_rate = Duration::from_millis(250);
         let mut last_tick = Instant::now();
-        
+
         loop {
             terminal.draw(|f| draw(f, self))?;
 
@@ -135,12 +132,8 @@ impl App {
 
     fn cleanup<B: Backend + Write>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
         disable_raw_mode()?;
-        execute!(
-            terminal.backend_mut(),
-            LeaveAlternateScreen,
-        )?;
+        execute!(terminal.backend_mut(), LeaveAlternateScreen,)?;
         terminal.show_cursor()?;
         Ok(())
     }
-    
 }

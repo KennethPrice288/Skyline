@@ -1,10 +1,12 @@
-use ratatui::{
-    backend::Backend, buffer::Buffer, crossterm::event::KeyCode, layout::{Constraint, Direction, Layout, Rect}, style::{Color, Style}, text::{Span, Text}, widgets::{Block, Borders, Widget}, Frame
-};
-use ratatui::prelude::StatefulWidget;
-use atrium_api::app::bsky::feed::defs::FeedViewPost;
-use std::collections::VecDeque;
 use anyhow::Result;
+use atrium_api::app::bsky::feed::defs::FeedViewPost;
+use ratatui::prelude::StatefulWidget;
+use ratatui::{
+    buffer::Buffer,
+    layout::{Constraint, Direction, Layout, Rect},
+    widgets::Widget,
+};
+use std::collections::VecDeque;
 
 use crate::client::api::{ApiError, API};
 
@@ -28,23 +30,7 @@ impl Feed {
             selected_index: 0,
         }
     }
-    
-    fn get_highlighted_index(&self) -> usize {
-        if self.visible_posts < 2 {
-            return 0;
-        }
-    
-        if self.selected_index > self.visible_posts.saturating_sub(2) {
-            if self.selected_index != self.posts.len().saturating_sub(2) {
-                self.visible_posts.saturating_sub(2)
-            } else {
-                self.visible_posts
-            }
-        } else {
-            self.selected_index
-        }
-    }
-    
+
     // Add methods to handle loading, scrolling, and updating the feed
     pub async fn load_initial_posts(&mut self, api: &mut API) -> Result<()> {
         let timeline_result = api.get_timeline(None).await;
@@ -72,17 +58,13 @@ impl Feed {
                                         }
                                     }
                                 }
-                                Err(e) => {
-                                    return Err(e)
-                                }
+                                Err(e) => return Err(e),
                             }
                         }
-                        _ => {
-                            return Err(e)
-                        }
+                        _ => return Err(e),
                     }
                 } else {
-                    return Err(e)
+                    return Err(e);
                 }
             }
         })
@@ -93,13 +75,12 @@ impl Feed {
             Ok((posts, cursor)) => {
                 self.posts.extend(posts);
                 self.cursor = cursor;
-            } 
+            }
             Err(e) => {
                 println!("{:?}", e);
             }
         }
     }
-
 }
 
 impl Widget for &Feed {
@@ -122,21 +103,34 @@ impl Widget for &Feed {
             .constraints(constraints)
             .split(posts_chunk);
 
-        let start_index = self.selected_index.saturating_sub(self.visible_posts.saturating_sub(2));
+        //If the start index is the second to last position in visible posts or greater
+        //Then the start index should be scrolled down
+        let start_index = if self.selected_index >= visible_posts.saturating_sub(2) {
+            self.selected_index
+                .saturating_sub(visible_posts.saturating_sub(2))
+        } else {
+            0 // Keep at top until we need to scroll
+        };
 
-        for (i, (post, area)) in self.posts.iter()
-            .skip(self.selected_index.saturating_sub(visible_posts - 2))
+        for (i, (post, area)) in self
+            .posts
+            .iter()
+            .skip(start_index)
             .take(visible_posts)
             .zip(post_areas.iter())
             .enumerate()
         {
             let post_component = super::post::Post::new(post.clone());
 
-            post_component.render(*area, buf, &mut PostState {
-                selected: self.selected_index == (start_index + i),
-                liked: false,
-                reposted: false,
-            });
+            post_component.render(
+                *area,
+                buf,
+                &mut PostState {
+                    selected: self.selected_index == (start_index + i),
+                    liked: false,
+                    reposted: false,
+                },
+            );
         }
     }
 }

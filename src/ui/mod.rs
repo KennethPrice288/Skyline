@@ -1,6 +1,6 @@
 pub mod app;
-pub mod layout;
 pub mod components;
+pub mod layout;
 
 // Re-export commonly used items
 pub use app::App;

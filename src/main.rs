@@ -1,9 +1,9 @@
 // In main.rs
-use std::panic;
-use std::io;
-use ratatui::crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
-use ratatui::crossterm::execute;
 use anyhow::Result;
+use ratatui::crossterm::execute;
+use ratatui::crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
+use std::io;
+use std::panic;
 
 use skyline::client::api::API;
 use skyline::ui::App;
