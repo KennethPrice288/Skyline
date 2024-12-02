@@ -308,16 +308,5 @@ impl Widget for &mut Feed {
                 
                 current_y += height;
             }
-    
-            // Update status line with detailed debug info
-            if let Some(status) = &mut self.status_line {
-                *status = format!(
-                    "area:{} scroll:{} sel:{} posts:[{}]", 
-                    area.height,
-                    self.scroll_offset,
-                    self.selected_index,
-                    debug_info.join(", ")
-                );
-            }
         }
     }

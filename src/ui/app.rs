@@ -136,16 +136,17 @@ impl App {
     }
 
     pub fn update_status(&mut self, _area_height: u16) {
-        self.status_line = self.feed.status_line.clone().unwrap_or("".to_string());
-        // let stats = self.feed.get_render_stats(area_height);
-        // self.status_line = format!(
-        //     "scroll: {}, sel: {}, area: {}, rendered: {}, posts: {}", 
-        //     self.feed.scroll_offset,
-        //     self.feed.selected_index,
-        //     stats.area_height,
-        //     stats.total_height,
-        //     stats.visible_posts
-        // );
+        self.status_line = if self.loading {
+            "Loading...".to_string()
+        } else if let Some(err) = &self.error {
+            err.to_string()
+        } else {
+            format!(
+                "Press q to quit, j/k to navigate, r to refresh {} / {}",
+                self.feed.selected_index + 1,
+                self.feed.posts.len()
+            )
+        };
     }
 
 }
