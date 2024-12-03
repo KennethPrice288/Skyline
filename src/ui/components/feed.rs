@@ -275,18 +275,12 @@ impl Widget for &mut Feed {
             self.ensure_post_heights();
             
             let mut current_y = area.y;
-            let mut debug_info = Vec::new();
             
             for (i, post) in self.posts.iter().enumerate().skip(self.scroll_offset) {
                 let height = self.post_heights
                     .get(&post.post.uri.to_string())
                     .copied()
                     .unwrap_or(6);
-                    
-                // Debug: track ALL posts from scroll_offset until after selected
-                if i <= self.selected_index + 1 {
-                    debug_info.push(format!("{}:{}/{}", i, current_y - area.y, height));
-                }
                     
                 let post_area = Rect {
                     x: area.x,
