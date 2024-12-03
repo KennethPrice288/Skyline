@@ -301,8 +301,6 @@ impl Widget for &mut Feed {
                     buf,
                     &mut super::post::PostState {
                         selected: self.selected_index == i,
-                        liked: false,
-                        reposted: false,
                     },
                 );
                 

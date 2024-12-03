@@ -12,8 +12,6 @@ use ratatui::{
 
 pub struct PostState {
     pub selected: bool,
-    pub liked: bool,
-    pub reposted: bool,
 }
 
 pub struct Post {
