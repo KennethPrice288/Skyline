@@ -8,8 +8,23 @@ use std::panic;
 use skyline::client::api::API;
 use skyline::ui::App;
 
+use log::{info, warn, error};
+use simplelog::{WriteLogger, LevelFilter, Config};
+use std::fs::File;
+
+pub fn setup_logging() -> std::io::Result<()> {
+    WriteLogger::init(
+        LevelFilter::Info,
+        Config::default(),
+        File::create("skyline.log")?
+    ).expect("Failed to initialize logger");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    setup_logging()?;
+
     // Set up panic hook for cleanup
     let original_hook = panic::take_hook();
     panic::set_hook(Box::new(move |panic_info| {

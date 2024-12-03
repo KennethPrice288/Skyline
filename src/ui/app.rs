@@ -2,9 +2,9 @@ use crate::client::api::API;
 use anyhow::Result;
 use ratatui::crossterm::{event::KeyCode, terminal::EnterAlternateScreen};
 use secrecy::SecretString;
-use std::time::{Duration, Instant};
+use std::{sync::Arc, time::{Duration, Instant}};
 
-use super::components::feed::Feed;
+use super::components::{feed::Feed, images::ImageManager};
 
 use ratatui::crossterm::{
     event::{self, Event},
@@ -22,16 +22,19 @@ pub struct App {
     pub error: Option<String>,
     pub feed: Feed,
     pub status_line: String,
+    pub image_manager: Arc<ImageManager>,
 }
 
 impl App {
     pub fn new(api: API) -> Self {
+        let image_manager = Arc::new(ImageManager::new());
         Self {
             api,
             loading: false,
             error: None,
-            feed: Feed::new(),
+            feed: Feed::new(Arc::clone(&image_manager)),
             status_line: "".to_string(),
+            image_manager,
         }
     }
 

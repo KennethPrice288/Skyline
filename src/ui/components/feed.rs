@@ -1,5 +1,6 @@
 use anyhow::Result;
 use atrium_api::app::bsky::feed::defs::FeedViewPost;
+use log::info;
 use ratatui::prelude::StatefulWidget;
 use ratatui::{
     buffer::Buffer,
@@ -7,18 +8,25 @@ use ratatui::{
     widgets::Widget,
 };
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 
 use crate::client::api::{ApiError, API};
+
+use super::images::ImageManager;
+
+
 
 
 pub struct Feed {
     pub posts: VecDeque<FeedViewPost>,
+    pub rendered_posts: Vec<super::post::Post>,
     pub cursor: Option<String>,
     pub selected_index: usize,
     pub scroll_offset: usize,
     pub post_heights: HashMap<String, u16>,
     pub last_known_height: u16,
     pub status_line: Option<String>,
+    image_manager: Arc<ImageManager>,
 }
 
 #[derive(Default)]
@@ -30,15 +38,17 @@ pub struct RenderStats {
 
 impl Feed {
 
-    pub fn new() -> Self {
+    pub fn new(image_manager: Arc<ImageManager>) -> Self {
         Self {
             posts: VecDeque::new(),
+            rendered_posts: Vec::new(),
             cursor: None,
             selected_index: 0,
             scroll_offset: 0,
             post_heights: HashMap::new(),
             last_known_height: 0,
             status_line: Some("".to_string()),
+            image_manager,
         }
     }
 
@@ -101,27 +111,26 @@ impl Feed {
    fn calculate_post_height(post: &FeedViewPost) -> u16 {
     let mut height = 0;
     
-    // Block borders (top and bottom)
-    height += 2;
+    // Base structure (borders)
+    height += 2;  // Top and bottom borders
     
-    // Header line
-    height += 1;
+    // Fixed components
+    height += 1;  // Header line
+    height += 1;  // Stats line
     
-    // Stats line
-    height += 1;
-    
-    // Content height (roughly one line per 50 chars)
+    // Dynamic content height (text)
     if let Some(text) = Feed::get_post_text(post) {
         height += ((text.len() as f32 / 50.0).ceil() as u16).max(1);
     }
     
-    // Add height for images if present
+    // Image section if present
     if post.post.embed.is_some() {
-        height += 10; // Placeholder height for images
+        height += 12;  // 10 for image area + 2 for borders
+        // info!("Adding image height for post, total height: {}", height);
     }
     
     height
-}
+    }
 
     // Helper to get post text - made static to avoid borrow issues
     fn get_post_text(post: &FeedViewPost) -> Option<String> {
@@ -158,8 +167,16 @@ impl Feed {
         let timeline_result = api.get_timeline(None).await;
         Ok(match timeline_result {
             Ok((posts, cursor)) => {
-                self.posts.extend(posts);
+
+                for post in posts {
+                    self.rendered_posts.push(super::post::Post::new(
+                        post.clone(), 
+                        self.image_manager.clone()
+                    ));
+                    self.posts.push_back(post);
+                }
                 self.cursor = cursor;
+                
             }
             Err(e) => {
                 // Try to determine if this is an authentication error
@@ -195,7 +212,13 @@ impl Feed {
     pub async fn scroll(&mut self, api: &API) {
         match api.get_timeline(self.cursor.clone()).await {
             Ok((posts, cursor)) => {
-                self.posts.extend(posts);
+                for post in posts {
+                    self.rendered_posts.push(super::post::Post::new(
+                        post.clone(), 
+                        self.image_manager.clone()
+                    ));
+                    self.posts.push_back(post);
+                }
                 self.cursor = cursor;
             }
             Err(e) => {
@@ -270,35 +293,47 @@ impl Feed {
 }
 
 impl Widget for &mut Feed {
-        fn render(self, area: Rect, buf: &mut Buffer) {
-            self.last_known_height = area.height;
-            self.ensure_post_heights();
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        // info!("Feed render area: {:?}", area);
+        self.last_known_height = area.height;
+        self.ensure_post_heights();
+        
+        let mut current_y = area.y;
+        
+        // Use the pre-created post components
+        for (i, post) in self.rendered_posts.iter_mut()
+            .enumerate()
+            .skip(self.scroll_offset) 
+        {
+            let post_height = self.post_heights
+                .get(&post.get_uri())
+                .copied()
+                .unwrap_or(6);
             
-            let mut current_y = area.y;
-            
-            for (i, post) in self.posts.iter().enumerate().skip(self.scroll_offset) {
-                let height = self.post_heights
-                    .get(&post.post.uri.to_string())
-                    .copied()
-                    .unwrap_or(6);
-                    
-                let post_area = Rect {
-                    x: area.x,
-                    y: current_y,
-                    width: area.width,
-                    height,
-                };
-                
-                let post_component = super::post::Post::new(post.clone());
-                post_component.render(
-                    post_area,
-                    buf,
-                    &mut super::post::PostState {
-                        selected: self.selected_index == i,
-                    },
-                );
-                
-                current_y += height;
+            let remaining_height = area.height.saturating_sub(current_y);
+            if remaining_height == 0 {
+                break;
             }
+            
+            let post_area = Rect {
+                x: area.x,
+                y: current_y,
+                width: area.width,
+                height: remaining_height.min(post_height),
+            };
+            
+            // info!("Post {} area: {:?} (clipped from original height: {})", 
+                //   i, post_area, post_height);
+            
+            post.render(
+                post_area,
+                buf,
+                &mut super::post::PostState {
+                    selected: self.selected_index == i,
+                },
+            );
+            
+            current_y = current_y.saturating_add(post_height);
         }
     }
+}
