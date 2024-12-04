@@ -2,9 +2,12 @@ use crate::client::api::API;
 use anyhow::Result;
 use ratatui::crossterm::{event::KeyCode, terminal::EnterAlternateScreen};
 use secrecy::SecretString;
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use super::components::{feed::Feed, images::ImageManager};
+use super::{components::{feed::Feed, images::ImageManager, post_list::PostList}, views::{View, ViewStack}};
 
 use ratatui::crossterm::{
     event::{self, Event},
@@ -20,7 +23,7 @@ pub struct App {
     pub api: API,
     pub loading: bool,
     pub error: Option<String>,
-    pub feed: Feed,
+    pub view_stack: ViewStack,
     pub status_line: String,
     pub image_manager: Arc<ImageManager>,
 }
@@ -32,32 +35,52 @@ impl App {
             api,
             loading: false,
             error: None,
-            feed: Feed::new(Arc::clone(&image_manager)),
+            view_stack: ViewStack::new(Arc::clone(&image_manager)),
             status_line: "".to_string(),
             image_manager,
         }
     }
-
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
         self.api.login(identifier, password).await
     }
 
     pub async fn load_initial_posts(&mut self) {
         self.loading = true;
-        self.feed.load_initial_posts(&mut self.api).await.unwrap();
+        if let View::Timeline(feed) = self.view_stack.current_view() {
+            feed.load_initial_posts(&mut self.api).await.unwrap();
+        }
         self.loading = false;
     }
 
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
-                self.feed.scroll_down();
-                // Only fetch more posts if we're near the end
-                if self.feed.selected_index >= self.feed.posts.len().saturating_sub(5) {
-                    self.feed.scroll(&self.api).await;
+                if let View::Timeline(feed) = self.view_stack.current_view() {
+                    feed.scroll_down();
+                    // Only fetch more posts if we're near the end
+                    if feed.selected_index() >= feed.posts.len().saturating_sub(5) {
+                        feed.scroll(&self.api).await;
+                    }
                 }
             }
-            KeyCode::Char('k') => self.feed.scroll_up(),
+            KeyCode::Char('k') => {
+                if let View::Timeline(feed) = self.view_stack.current_view() {
+                    feed.scroll_up();
+                }
+            }
+            KeyCode::Char('v') => {
+                if let View::Timeline(feed) = self.view_stack.current_view() {
+                    if let Some(selected_post) = feed.posts.get(feed.selected_index()) {
+                        let uri = selected_post.data.uri.to_string();
+                        if let Err(e) = self.view_stack.push_thread_view(uri, &self.api).await {
+                            self.error = Some(format!("Failed to load thread: {}", e));
+                        }
+                    }
+                }
+            }
+            KeyCode::Esc => {
+                self.view_stack.pop_view();
+            }
             _ => {}
         }
     }
@@ -138,18 +161,22 @@ impl App {
         Ok(())
     }
 
-    pub fn update_status(&mut self, _area_height: u16) {
+    pub fn update_status(&mut self) {
         self.status_line = if self.loading {
             "Loading...".to_string()
         } else if let Some(err) = &self.error {
             err.to_string()
         } else {
+            let (selected, total) = match self.view_stack.current_view() {
+                View::Timeline(feed) => (feed.selected_index() + 1, feed.posts.len()),
+                View::Thread(_) => (0, 0), // TODO: Add proper thread navigation status
+            };
+            
             format!(
                 "Press q to quit, j/k to navigate, r to refresh {} / {}",
-                self.feed.selected_index + 1,
-                self.feed.posts.len()
+                selected,
+                total
             )
         };
     }
-
 }

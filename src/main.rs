@@ -8,16 +8,16 @@ use std::panic;
 use skyline::client::api::API;
 use skyline::ui::App;
 
-use log::{info, warn, error};
-use simplelog::{WriteLogger, LevelFilter, Config};
+use simplelog::{Config, LevelFilter, WriteLogger};
 use std::fs::File;
 
 pub fn setup_logging() -> std::io::Result<()> {
     WriteLogger::init(
         LevelFilter::Info,
         Config::default(),
-        File::create("skyline.log")?
-    ).expect("Failed to initialize logger");
+        File::create("skyline.log")?,
+    )
+    .expect("Failed to initialize logger");
     Ok(())
 }
 

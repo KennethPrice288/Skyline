@@ -11,9 +11,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(f.area());
 
-    app.update_status(chunks[0].height);
+    app.update_status();
 
-    f.render_widget(&mut app.feed, chunks[0]);
+    match app.view_stack.current_view() {
+        super::views::View::Timeline(feed) => {
+            f.render_widget(feed, chunks[0])
+        },
+        super::views::View::Thread(thread) => {
+            f.render_widget(thread, chunks[0])
+        },
+    }
 
     f.render_widget(Paragraph::new(app.status_line.clone()), chunks[1]);
 }

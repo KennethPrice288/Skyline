@@ -1,17 +1,67 @@
-use std::sync::Arc;
+use anyhow::Result;
+use atrium_api::app::bsky::embed::images::ViewImage;
+use image::DynamicImage;
+use image::load_from_memory;
+use log::info;
+use lru::LruCache;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{self, Style};
 use ratatui::widgets::{Block, Borders, Widget};
-use tokio::sync::RwLock;
-use atrium_api::app::bsky::embed::images::ViewImage;
-use anyhow::Result;
+use ratatui_image::{protocol, Image};
 use reqwest;
-use lru::LruCache;
-use ratatui_image::{Image, protocol};
-use image::{load_from_memory, imageops::resize, imageops::FilterType};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-const FONT_SIZE: (u16, u16) = (8, 16);
+#[derive(Hash, PartialEq, Eq)]
+pub struct SixelCacheKey {
+    url: String,
+    width: u16,
+    height: u16,
+}
+
+impl SixelCacheKey {
+    fn new(url: String, area: Rect) -> Self {
+        Self {
+            url,
+            width: area.width,
+            height: area.height,
+        }
+    }
+}
+
+pub struct SixelCache {
+    cache: LruCache<SixelCacheKey, protocol::sixel::Sixel>,
+}
+
+impl SixelCache {
+    pub fn new() -> Self {
+        Self {
+            cache: LruCache::new(50.try_into().unwrap()),
+        }
+    }
+
+    pub fn get(
+        &mut self,
+        cache_key: &SixelCacheKey,
+    ) -> Option<&ratatui_image::protocol::sixel::Sixel> {
+        self.cache.get(cache_key)
+    }
+
+    pub fn contains(&self, cache_key: &SixelCacheKey) -> bool {
+        self.cache.peek(cache_key).is_some()
+    }
+
+    pub fn insert(
+        &mut self,
+        cache_key: SixelCacheKey,
+        data: ratatui_image::protocol::sixel::Sixel,
+    ) {
+        self.cache.put(cache_key, data);
+    }
+}
+
+pub type SharedSixelCache = Arc<RwLock<SixelCache>>;
 
 // Global image cache
 pub struct ImageCache {
@@ -21,7 +71,7 @@ pub struct ImageCache {
 impl ImageCache {
     pub fn new() -> Self {
         Self {
-            cache: LruCache::new(200.try_into().unwrap())
+            cache: LruCache::new(200.try_into().unwrap()),
         }
     }
 
@@ -38,39 +88,143 @@ impl ImageCache {
         self.cache.put(url, data);
     }
 }
+
 // Thread-safe wrapper for the cache
 pub type SharedImageCache = Arc<RwLock<ImageCache>>;
+
+// Cache for decoded images
+pub struct DecodedImageCache {
+    cache: LruCache<String, DynamicImage>,
+}
+
+impl DecodedImageCache {
+    pub fn new() -> Self {
+        Self {
+            cache: LruCache::new(100.try_into().unwrap()),
+        }
+    }
+
+    pub fn get(&mut self, url: &str) -> Option<&DynamicImage> {
+        self.cache.get(url)
+    }
+
+    pub fn insert(&mut self, url: String, image: DynamicImage) {
+        self.cache.put(url, image);
+    }
+}
+
+// Thread-safe wrapper
+pub type SharedDecodedImageCache = Arc<RwLock<DecodedImageCache>>;
 
 // Image downloader/manager
 pub struct ImageManager {
     client: reqwest::Client,
-    pub cache: SharedImageCache,
+    pub raw_cache: SharedImageCache,
+    pub decoded_cache: SharedDecodedImageCache,
+    pub sixel_cache: SharedSixelCache,
+    picker: ratatui_image::picker::Picker,
 }
 
 impl ImageManager {
     pub fn new() -> Self {
+        let mut picker = ratatui_image::picker::Picker::from_query_stdio()
+            .unwrap_or_else(|_| ratatui_image::picker::Picker::from_fontsize((16, 32)));
+
+        picker.set_protocol_type(ratatui_image::picker::ProtocolType::Sixel);
+        picker.set_background_color(Some(image::Rgb::<u8>([0, 0, 0])));
+
+        info!("Created picker with font size: {:?}", picker.font_size());
+
         Self {
             client: reqwest::Client::new(),
-            cache: Arc::new(RwLock::new(ImageCache::new())),
+            raw_cache: Arc::new(RwLock::new(ImageCache::new())),
+            decoded_cache: Arc::new(RwLock::new(DecodedImageCache::new())),
+            sixel_cache: Arc::new(RwLock::new(SixelCache::new())),
+            picker,
         }
     }
 
+    // get_image for downloading
     pub async fn get_image(&self, url: &str) -> Result<Vec<u8>> {
         {
-            let mut cache = self.cache.write().await;
+            let mut cache = self.raw_cache.write().await;
             if let Some(data) = cache.get(url) {
                 return Ok(data.clone());
             }
         }
 
-        // Download if not in cache
         let response = self.client.get(url).send().await?;
         let image_data = response.bytes().await?.to_vec();
 
-        // Store in cache
-        self.cache.write().await.insert(url.to_string(), image_data.clone());
+        self.raw_cache
+            .write()
+            .await
+            .insert(url.to_string(), image_data.clone());
 
         Ok(image_data)
+    }
+
+    pub fn get_or_create_sixel(&self, url: &str, area: Rect) -> Option<protocol::sixel::Sixel> {
+        let key = SixelCacheKey::new(url.to_string(), area);
+
+        // Try cache first
+        if let Ok(mut cache) = self.sixel_cache.try_write() {
+            if let Some(sixel) = cache.get(&key).cloned() {
+                return Some(sixel);
+            }
+        }
+
+        // Check if we have a decoded image
+        if let Ok(mut cache) = self.decoded_cache.try_write() {
+            if let Some(decoded) = cache.get(url).cloned() {
+                let sixel_cache = self.sixel_cache.clone();
+                let font_size = self.picker.font_size();
+
+                tokio::spawn(async move {
+                    // Create a new picker with same settings
+                    let mut picker = ratatui_image::picker::Picker::from_fontsize(font_size);
+                    picker.set_protocol_type(ratatui_image::picker::ProtocolType::Sixel);
+                    picker.set_background_color(Some(image::Rgb::<u8>([0, 0, 0])));
+
+                    match picker.new_protocol(decoded, area, ratatui_image::Resize::Fit(Some(ratatui_image::FilterType::Triangle))) {
+                        Ok(protocol) => {
+                            if let protocol::Protocol::Sixel(sixel) = protocol {
+                                if let Ok(mut cache) = sixel_cache.try_write() {
+                                    cache.insert(key, sixel);
+                                }
+                            }
+                        }
+                        Err(e) => info!("Failed to create protocol: {:?}", e),
+                    }
+                });
+            }
+        }
+
+        None
+    }
+
+    pub async fn get_decoded_image(&self, url: &str) -> Result<Option<DynamicImage>> {
+        // Check decoded cache first
+        if let Some(decoded) = self.decoded_cache.write().await.get(url) {
+            info!("Found decoded image in cache for {}", url);
+            return Ok(Some(decoded.clone()));
+        }
+
+        info!("Attempting to load and decode image for {}", url);
+        // If not in decoded cache, try to load and decode
+        if let Ok(raw_data) = self.get_image(url).await {
+            if let Ok(decoded) = load_from_memory(&raw_data) {
+                info!("Successfully decoded image for {}", url);
+                self.decoded_cache
+                    .write()
+                    .await
+                    .insert(url.to_string(), decoded.clone());
+                return Ok(Some(decoded));
+            }
+        }
+
+        info!("Failed to load/decode image for {}", url);
+        Ok(None)
     }
 }
 
@@ -78,29 +232,42 @@ pub struct PostImage {
     pub image_data: ViewImage,
     pub show_alt_text: bool,
     pub image_manager: Arc<ImageManager>,
-    cached_image: Option<Vec<u8>>,
+    cached_decoded_image: Option<DynamicImage>,
 }
 
 impl PostImage {
     pub fn new(image_data: ViewImage, image_manager: Arc<ImageManager>) -> Self {
-        let cached_image = {
-            if let Ok(mut cache) = image_manager.cache.try_write() {
+        let cached_decoded_image = {
+            if let Ok(mut cache) = image_manager.decoded_cache.try_write() {
                 cache.get(&image_data.thumb).cloned()
             } else {
                 None
             }
         };
 
+        if cached_decoded_image.is_none() {
+            let image_manager_clone = image_manager.clone();
+            let thumb = image_data.thumb.clone();
+
+            tokio::spawn(async move {
+                if let Ok(Some(decoded)) = image_manager_clone.get_decoded_image(&thumb).await {
+                    if let Ok(mut cache) = image_manager_clone.decoded_cache.try_write() {
+                        cache.insert(thumb, decoded);
+                    }
+                }
+            });
+        }
+
         Self {
             image_data,
             show_alt_text: false,
             image_manager,
-            cached_image,
+            cached_decoded_image,
         }
     }
 
-    pub fn update_cache(&mut self, data: Vec<u8>) {
-        self.cached_image = Some(data);
+    pub fn update_cache(&mut self, image: DynamicImage) {
+        self.cached_decoded_image = Some(image);
     }
 
     pub fn get_alt_text(&self) -> Option<&str> {
@@ -112,84 +279,79 @@ impl PostImage {
     }
 }
 
-impl Widget for &PostImage {
+use ratatui::layout::{Constraint, Direction, Layout};
+
+use ratatui::text::{Line, Span};
+use ratatui::widgets::Paragraph;
+
+impl Widget for &mut PostImage {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        // Skip if no space
+        let render_start = std::time::Instant::now();
+
         if area.height == 0 {
             return;
         }
 
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title("Image");
+        info!("PostImage render area: {:?}", area);
+        buf.set_style(area, Style::default());
+
+        let block = Block::default().borders(Borders::ALL).title("Image");
 
         let inner_area = block.inner(area);
+        info!("Inner area after block: {:?}", inner_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50), // Image
+                Constraint::Percentage(50), // Alt text
+            ])
+            .split(inner_area);
+
         block.render(area, buf);
 
-       // Always render alt text first if we have room
-       if inner_area.y < area.bottom() {
-        buf.set_string(
-            inner_area.x,
-            inner_area.y,
-            format!("📷 {}", self.get_alt_text().unwrap_or(
-                "No alt text provided"
+        let image_chunk = chunks[0];
+        let alt_text_chunk = chunks[1];
+
+        info!("Image chunk dimensions: {:?}", image_chunk);
+        info!("Alt text chunk dimensions: {:?}", alt_text_chunk);
+
+        // Alt text using Paragraph widget for automatic wrapping
+        let alt_text = self.get_alt_text().unwrap_or("No alt text provided");
+        let alt_text_content = vec![
+            Line::from(Span::styled("📷", Style::default().fg(style::Color::Gray))),
+            Line::from(Span::styled(
+                alt_text,
+                Style::default().fg(style::Color::Gray),
             )),
-            Style::default().fg(style::Color::Gray)
-        );
-    }
+        ];
+        Paragraph::new(alt_text_content)
+            .wrap(ratatui::widgets::Wrap { trim: true })
+            .render(alt_text_chunk, buf);
 
-    // Status line or image rendering
-    if let Some(image_data) = &self.cached_image {
-        if inner_area.height > 2 {
-            let image_area = Rect {
-                x: inner_area.x,
-                y: inner_area.y + 2,
-                width: inner_area.width,
-                height: inner_area.height.saturating_sub(2),
-            };
+        // Try to get cached Sixel
+        if let Some(sixel) = self
+            .image_manager
+            .get_or_create_sixel(&self.image_data.thumb, image_chunk)
+        {
+            let render_image_start = std::time::Instant::now();
 
-            match load_from_memory(image_data) {
-                Ok(decoded_image) => {
-                    let source = protocol::ImageSource::new(
-                        decoded_image,
-                        (16, 32),
-                    );
-                    
-                    if let Ok(sixel) = protocol::sixel::Sixel::from_source(
-                        &source,
-                        (16, 32),
-                        ratatui_image::Resize::Fit(None),
-                        None,
-                        false,  // transparent
-                        image_area,
-                    ) {
-                        let protocol = protocol::Protocol::Sixel(sixel);
-                        Image::new(&protocol).render(image_area, buf);
-                    }
-                }
-                Err(_) => {
-                    // Only show error on actual decode failure
-                    if inner_area.y + 1 < area.bottom() {
-                        buf.set_string(
-                            inner_area.x,
-                            inner_area.y + 1,
-                            "Failed to decode image",
-                            Style::default().fg(style::Color::Red)
-                        );
-                    }
-                }
-            }
-        }
+            let protocol = protocol::Protocol::Sixel(sixel);
+
+            Image::new(&protocol).render(image_chunk, buf);
+            let render_duration = render_image_start.elapsed();
+            info!("Sixel render took: {:?}", render_duration);
         } else {
-            // Only show loading when we don't have the image
-            if inner_area.y + 1 < area.bottom() {
-                buf.set_string(
-                    inner_area.x,
-                    inner_area.y + 1,
-                    "Loading image...",
-                    Style::default().fg(style::Color::DarkGray)
-                );
-            }
+            // Loading indicator
+            buf.set_string(
+                image_chunk.x,
+                image_chunk.y,
+                "Loading image...",
+                Style::default().fg(style::Color::DarkGray),
+            );
         }
+
+        let total_duration = render_start.elapsed();
+        info!("Total PostImage render took: {:?}", total_duration);
     }
 }

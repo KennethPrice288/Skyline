@@ -1,182 +1,59 @@
-use anyhow::Result;
-use atrium_api::app::bsky::feed::defs::FeedViewPost;
-use log::info;
-use ratatui::prelude::StatefulWidget;
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    widgets::Widget,
-};
-use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
+
+use std::{collections::{HashMap, VecDeque}, sync::Arc};
+
+use atrium_api::app::bsky::feed::defs::{FeedViewPost, PostView};
+use ratatui::{buffer::Buffer, layout::Rect, widgets::{Widget, StatefulWidget}};
 
 use crate::client::api::{ApiError, API};
-
-use super::images::ImageManager;
-
-
-
+use anyhow::Result;
+use super::{images::ImageManager, post_list::{PostList, PostListBase}};
 
 pub struct Feed {
-    pub posts: VecDeque<FeedViewPost>,
+    pub posts: VecDeque<PostView>,
     pub rendered_posts: Vec<super::post::Post>,
     pub cursor: Option<String>,
-    pub selected_index: usize,
-    pub scroll_offset: usize,
     pub post_heights: HashMap<String, u16>,
-    pub last_known_height: u16,
     pub status_line: Option<String>,
     image_manager: Arc<ImageManager>,
-}
-
-#[derive(Default)]
-pub struct RenderStats {
-    pub total_height: u16,
-    pub visible_posts: usize,
-    pub area_height: u16,
+    base: PostListBase,
 }
 
 impl Feed {
-
     pub fn new(image_manager: Arc<ImageManager>) -> Self {
         Self {
             posts: VecDeque::new(),
             rendered_posts: Vec::new(),
             cursor: None,
-            selected_index: 0,
-            scroll_offset: 0,
             post_heights: HashMap::new(),
-            last_known_height: 0,
             status_line: Some("".to_string()),
             image_manager,
+            base: PostListBase::new(),
         }
     }
 
-    // Helper to calculate total height of posts before scroll offset
-    pub fn get_total_height_before_scroll(&self) -> u16 {
-        self.posts
-            .iter()
-            .take(self.scroll_offset)
-            .filter_map(|post| self.post_heights.get(&post.post.uri.to_string()))
-            .sum()
+    // Use delegated getters/setters for base fields
+    pub fn selected_index(&self) -> usize {
+        self.base.selected_index
     }
 
-    pub fn get_render_stats(&self, area_height: u16) -> RenderStats {
-        let mut total_height = 0;
-        let mut visible_posts = 0;
-
-        for post in self.posts.iter().skip(self.scroll_offset) {
-            let height = self.post_heights
-                .get(&post.post.uri.to_string())
-                .copied()
-                .unwrap_or(6);
-
-            total_height += height;
-            visible_posts += 1;
-
-            if total_height >= area_height {
-                break;
-            }
-        }
-
-        RenderStats {
-            total_height,
-            visible_posts,
-            area_height,
-        }
+    pub fn post_heights(&self) -> &HashMap<String, u16> {
+        &self.post_heights
     }
 
-    pub fn get_last_visible_index(&self, area_height: u16) -> usize {
-        let mut total_height = 0;
-        let mut last_visible = self.scroll_offset;
-
-        for (i, post) in self.posts.iter().enumerate().skip(self.scroll_offset) {
-            let height = self.post_heights
-                .get(&post.post.uri.to_string())
-                .copied()
-                .unwrap_or(6);
-
-            if total_height + height > area_height {
-                break;
-            }
-
-            total_height += height;
-            last_visible = i;
-        }
-
-        last_visible
-    }
-
-   // Calculate the internal height needed for post content and borders
-   fn calculate_post_height(post: &FeedViewPost) -> u16 {
-    let mut height = 0;
-    
-    // Base structure (borders)
-    height += 2;  // Top and bottom borders
-    
-    // Fixed components
-    height += 1;  // Header line
-    height += 1;  // Stats line
-    
-    // Dynamic content height (text)
-    if let Some(text) = Feed::get_post_text(post) {
-        height += ((text.len() as f32 / 50.0).ceil() as u16).max(1);
-    }
-    
-    // Image section if present
-    if post.post.embed.is_some() {
-        height += 12;  // 10 for image area + 2 for borders
-        // info!("Adding image height for post, total height: {}", height);
-    }
-    
-    height
-    }
-
-    // Helper to get post text - made static to avoid borrow issues
-    fn get_post_text(post: &FeedViewPost) -> Option<String> {
-        use atrium_api::types::Unknown;
-        use ipld_core::ipld::Ipld;
-        
-        match &post.post.record {
-            Unknown::Object(map) => match map.get("text") {
-                Some(data_model) => match &**data_model {
-                    Ipld::String(text) => Some(text.clone()),
-                    _ => None,
-                },
-                None => None,
-            },
-            _ => None,
-        }
-    }
-
-    // Get cached height or calculate new height
-    pub fn ensure_post_heights(&mut self) {
-        let posts_to_calculate: Vec<_> = self.posts
-            .iter()
-            .filter(|post| !self.post_heights.contains_key(&post.post.uri.to_string()))
-            .cloned()
-            .collect();
-
-        for post in posts_to_calculate {
-            let height = Feed::calculate_post_height(&post);
-            self.post_heights.insert(post.post.uri.to_string(), height);
-        }
-    }
 
     pub async fn load_initial_posts(&mut self, api: &mut API) -> Result<()> {
         let timeline_result = api.get_timeline(None).await;
         Ok(match timeline_result {
             Ok((posts, cursor)) => {
-
-                for post in posts {
+                for feed_post in posts {
                     self.rendered_posts.push(super::post::Post::new(
-                        post.clone(), 
-                        self.image_manager.clone()
+                        feed_post.post.clone(),
+                        self.image_manager.clone(),
                     ));
-                    self.posts.push_back(post);
+                    // Extract the PostView from FeedViewPost
+                    self.posts.push_back(feed_post.post.clone());
                 }
                 self.cursor = cursor;
-                
             }
             Err(e) => {
                 // Try to determine if this is an authentication error
@@ -189,7 +66,9 @@ impl Feed {
                                     // Retry getting timeline
                                     match api.get_timeline(None).await {
                                         Ok((posts, cursor)) => {
-                                            self.posts.extend(posts);
+                                            for feed_post in posts {
+                                                self.posts.push_back(feed_post.post.clone());
+                                            }
                                             self.cursor = cursor;
                                         }
                                         Err(e) => {
@@ -210,129 +89,125 @@ impl Feed {
     }
 
     pub async fn scroll(&mut self, api: &API) {
-        match api.get_timeline(self.cursor.clone()).await {
-            Ok((posts, cursor)) => {
-                for post in posts {
-                    self.rendered_posts.push(super::post::Post::new(
-                        post.clone(), 
-                        self.image_manager.clone()
-                    ));
-                    self.posts.push_back(post);
-                }
-                self.cursor = cursor;
-            }
-            Err(e) => {
-                println!("{:?}", e);
-            }
-        }
-    }
-    
-    pub fn scroll_down(&mut self) {
-        if self.selected_index >= self.posts.len() - 1 {
-            return;
-        }
-        
-        // Before moving selection, verify the new selection would be visible
-        let mut y_position = 0;
-        let next_index = self.selected_index + 1;
-        
-        // Find where the next post would be positioned
-        for (i, post) in self.posts.iter().enumerate().skip(self.scroll_offset) {
-            if i == next_index {
-                let height = self.post_heights
-                    .get(&post.post.uri.to_string())
-                    .copied()
-                    .unwrap_or(6);
-                    
-                // Scroll if either:
-                // 1. The post starts beyond visible area, or
-                // 2. The post starts inside but would extend beyond visible area
-                if y_position >= self.last_known_height || 
-                   (y_position + height) > self.last_known_height {
-                    // Keep scrolling until this post fits
-                    while y_position >= self.last_known_height.saturating_sub(height) {
-                        if self.scroll_offset >= self.posts.len() - 1 {
-                            break;
+                match api.get_timeline(self.cursor.clone()).await {
+                    Ok((feed_posts, cursor)) => {
+                        for feed_post in feed_posts {
+                            self.rendered_posts.push(super::post::Post::new(
+                                feed_post.post.clone(),
+                                self.image_manager.clone(),
+                            ));
+                            self.posts.push_back(feed_post.post.clone());
                         }
-                        if let Some(first_post) = self.posts.get(self.scroll_offset) {
-                            let first_height = self.post_heights
-                                .get(&first_post.post.uri.to_string())
-                                .copied()
-                                .unwrap_or(6);
-                            y_position -= first_height;
-                            self.scroll_offset += 1;
-                        }
+                        self.cursor = cursor;
+                    }
+                    Err(e) => {
+                        println!("{:?}", e);
                     }
                 }
-                break;
             }
-            
-            let height = self.post_heights
-                .get(&post.post.uri.to_string())
-                .copied()
-                .unwrap_or(6);
-            y_position += height;
-        }
-        
-        // Now safe to move selection
-        self.selected_index = next_index;
+    
+
+}
+
+impl PostList for Feed {
+    fn get_total_height_before_scroll(&self) -> u16 {
+        self.posts
+            .iter()
+            .take(self.base.scroll_offset)
+            .filter_map(|post| self.post_heights.get(&post.data.uri.to_string()))
+            .sum()
     }
 
-    pub fn scroll_up(&mut self) {
-        if self.selected_index == 0 {
-            return;
+    fn get_last_visible_index(&self, area_height: u16) -> usize {
+        let mut total_height = 0;
+        let mut last_visible = self.base.scroll_offset;
+
+        for (i, post) in self.posts.iter().enumerate().skip(self.base.scroll_offset) {
+            let height = self.post_heights
+                .get(&post.data.uri.to_string())
+                .copied()
+                .unwrap_or(6);
+
+            if total_height + height > area_height {
+                break;
+            }
+
+            total_height += height;
+            last_visible = i;
         }
-        
-        self.selected_index -= 1;
-        
-        // If we've scrolled above viewport, scroll up
-        if self.selected_index < self.scroll_offset {
-            self.scroll_offset = self.selected_index;
+
+        last_visible
+    }
+
+    fn ensure_post_heights(&mut self) {
+        let posts_to_calculate: Vec<_> = self.posts
+            .iter()
+            .filter(|post| !self.post_heights.contains_key(&post.data.uri.to_string()))
+            .cloned()
+            .collect();
+
+        for post in posts_to_calculate {
+            let height = PostListBase::calculate_post_height(&post);
+            self.post_heights.insert(post.data.uri.to_string(), height);
         }
     }
+
+    fn scroll_down(&mut self) {
+        self.base.handle_scroll_down(
+            &self.posts,
+            |post| self.post_heights
+                .get(&post.data.uri.to_string())
+                .copied()
+                .unwrap_or(6)
+        );
+    }
+
+    fn scroll_up(&mut self) {
+        self.base.handle_scroll_up();
+    }
+
 }
 
 impl Widget for &mut Feed {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // info!("Feed render area: {:?}", area);
-        self.last_known_height = area.height;
+        self.base.last_known_height = area.height;
         self.ensure_post_heights();
-        
+
         let mut current_y = area.y;
-        
+
         // Use the pre-created post components
-        for (i, post) in self.rendered_posts.iter_mut()
+        for (i, post) in self
+            .rendered_posts
+            .iter_mut()
             .enumerate()
-            .skip(self.scroll_offset) 
+            .skip(self.base.scroll_offset)
         {
-            let post_height = self.post_heights
-                .get(&post.get_uri())
-                .copied()
-                .unwrap_or(6);
-            
+            let post_height = self.post_heights.get(&post.get_uri()).copied().unwrap_or(6);
+
             let remaining_height = area.height.saturating_sub(current_y);
             if remaining_height == 0 {
                 break;
             }
-            
+
             let post_area = Rect {
                 x: area.x,
                 y: current_y,
                 width: area.width,
                 height: remaining_height.min(post_height),
             };
-            
-            // info!("Post {} area: {:?} (clipped from original height: {})", 
-                //   i, post_area, post_height);
-            
+
+            // info!("Post {} area: {:?} (clipped from original height: {})",
+            //   i, post_area, post_height);
+
             post.render(
                 post_area,
                 buf,
                 &mut super::post::PostState {
-                    selected: self.selected_index == i,
+                    selected: self.base.selected_index == i,
                 },
             );
-            
+
             current_y = current_y.saturating_add(post_height);
         }
     }
