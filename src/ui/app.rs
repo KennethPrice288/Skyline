@@ -55,27 +55,51 @@ impl App {
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
-                if let View::Timeline(feed) = self.view_stack.current_view() {
-                    feed.scroll_down();
-                    // Only fetch more posts if we're near the end
-                    if feed.selected_index() >= feed.posts.len().saturating_sub(5) {
-                        feed.scroll(&self.api).await;
-                    }
+                match self.view_stack.current_view() {
+                    View::Timeline(feed) => {
+                        feed.scroll_down();
+                        // Only fetch more posts if we're near the end
+                        if feed.selected_index() >= feed.posts.len().saturating_sub(5) {
+                            feed.scroll(&self.api).await;
+                        }
+                    },
+                    View::Thread(thread) => {
+                        thread.scroll_down();
+                    },
                 }
             }
             KeyCode::Char('k') => {
-                if let View::Timeline(feed) = self.view_stack.current_view() {
-                    feed.scroll_up();
+                match self.view_stack.current_view() {
+                    View::Timeline(feed) => {
+                        feed.scroll_up();
+                    },
+                    View::Thread(thread) => {
+                        thread.scroll_up();
+                    },
                 }
             }
             KeyCode::Char('v') => {
-                if let View::Timeline(feed) = self.view_stack.current_view() {
-                    if let Some(selected_post) = feed.posts.get(feed.selected_index()) {
-                        let uri = selected_post.data.uri.to_string();
-                        if let Err(e) = self.view_stack.push_thread_view(uri, &self.api).await {
-                            self.error = Some(format!("Failed to load thread: {}", e));
+                match self.view_stack.current_view() {
+                    View::Timeline(feed) => {
+                        if let Some(selected_post) = feed.posts.get(feed.selected_index()) {
+                            let uri = selected_post.data.uri.to_string();
+                            if let Err(e) = self.view_stack.push_thread_view(uri, &self.api).await {
+                                self.error = Some(format!("Failed to load thread: {}", e));
+                            }
                         }
-                    }
+                    },
+                    View::Thread(thread) => {
+                        if let Some(selected_post) = thread.posts.get(thread.selected_index()) {
+                            let uri = selected_post.data.post.data.uri.to_string();
+                            //Cant select same post over again
+                            if uri == thread.selected_uri {
+                                return;
+                            }
+                            if let Err(e) = self.view_stack.push_thread_view(uri, &self.api).await {
+                                self.error = Some(format!("Failed to load thread: {}", e));
+                            }
+                        }
+                    },
                 }
             }
             KeyCode::Esc => {

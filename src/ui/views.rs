@@ -2,6 +2,8 @@
 use std::sync::Arc;
 use anyhow::Result;
 use atrium_api::app::bsky::feed::get_post_thread::OutputThreadRefs;
+use log::info;
+use atrium_api::types::{LimitedNonZeroU64, LimitedU16};
 
 use crate::client::api::API;
 use crate::ui::components::{feed::Feed, images::ImageManager, thread::Thread};
@@ -30,17 +32,22 @@ impl ViewStack {
     }
 
     pub async fn push_thread_view(&mut self, uri: String, api: &API) -> Result<()> {
+        info!("Attempting to create thread view for URI: {}", uri);
+        
         let params = atrium_api::app::bsky::feed::get_post_thread::Parameters {
             data: atrium_api::app::bsky::feed::get_post_thread::ParametersData {
                 uri: uri.into(),
-                depth: None,
-                parent_height: None,
+                depth: Some(LimitedU16::MAX),
+                parent_height: Some(LimitedU16::MAX),
             },
             extra_data: ipld_core::ipld::Ipld::Null,
         };
-    
+        
         match api.agent.api.app.bsky.feed.get_post_thread(params).await {
             Ok(response) => {
+                // Try to see the raw response data
+                info!("Raw response: {:?}", response);
+                
                 let thread_refs = match response.data.thread {
                     atrium_api::types::Union::Refs(refs) => refs,
                     atrium_api::types::Union::Unknown(unknown) => {
