@@ -272,7 +272,7 @@ impl App {
         } else {
             let (selected, total) = match self.view_stack.current_view() {
                 View::Timeline(feed) => (feed.selected_index() + 1, feed.posts.len()),
-                View::Thread(thread) => (thread.selected_index() + 1, thread.posts.len()), // TODO: Add proper thread navigation status
+                View::Thread(thread) => (thread.selected_index() + 1, thread.posts.len()),
             };
             
             format!(
