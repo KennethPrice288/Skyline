@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bsky_sdk::{agent::{config::{Config, FileStore}, BskyAgent}};
+use bsky_sdk::agent::{config::{Config, FileStore}, BskyAgent};
 use secrecy::{ExposeSecret, SecretString};
 
 #[derive(Debug, thiserror::Error)]

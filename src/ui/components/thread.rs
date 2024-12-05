@@ -1,7 +1,7 @@
 // In src/ui/components/thread.rs
 use std::{collections::{HashMap, HashSet, VecDeque}, sync::Arc};
 use atrium_api::{app::bsky::feed::{
-    defs::{PostViewData, ThreadViewPost, ThreadViewPostParentRefs, ThreadViewPostRepliesItem}, get_post_thread::OutputThreadRefs
+    defs::{PostViewData, ThreadViewPostParentRefs, ThreadViewPostRepliesItem}, get_post_thread::OutputThreadRefs
 }, types::Unknown};
 use log::info;
 use ratatui::{

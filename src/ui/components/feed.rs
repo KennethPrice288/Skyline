@@ -4,7 +4,7 @@ use std::{collections::{HashMap, VecDeque}, sync::Arc};
 use atrium_api::app::bsky::feed::defs::PostView;
 use ratatui::{buffer::Buffer, layout::Rect, widgets::{Widget, StatefulWidget}};
 
-use crate::client::api::{ApiError, API};
+use crate::client::api::API;
 use anyhow::Result;
 use super::{images::ImageManager, post_list::{PostList, PostListBase}};
 

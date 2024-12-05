@@ -104,33 +104,6 @@ impl App {
         }
     }
 
-    async fn handle_unlike_post(&mut self) {
-        let update_uri = match self.view_stack.current_view() {
-            View::Timeline(feed) => {
-                let selected_idx = feed.selected_index();
-                if let Some(post) = feed.posts.get(selected_idx) {
-                    self.api.unlike_post(post);
-                    post.uri.to_string()
-                } else {
-                    "".to_string()
-                }
-            }
-            View::Thread(thread) => {
-                let selected_idx = thread.selected_index();
-                if let Some(post) = thread.posts.get(selected_idx) {
-                    self.api.unlike_post(post);
-                    post.uri.to_string()
-                } else {
-                    "".to_string()
-                }
-            },
-        };
-        if !update_uri.is_empty() {
-            self.update_post_data(&update_uri).await;
-        }
-
-    }
-
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {

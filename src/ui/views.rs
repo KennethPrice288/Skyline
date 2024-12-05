@@ -1,7 +1,6 @@
 // In src/ui/views/mod.rs
 use std::sync::Arc;
 use anyhow::Result;
-use atrium_api::app::bsky::feed::defs::PostViewData;
 use log::info;
 use atrium_api::types::LimitedU16;
 
