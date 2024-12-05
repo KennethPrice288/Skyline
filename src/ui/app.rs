@@ -157,30 +157,30 @@ impl App {
             KeyCode::Char('l') => {
                self.handle_like_post().await;
             },
-            KeyCode::Char('r') => {
-                match self.view_stack.current_view() {
-                    View::Timeline(feed) => {
-                        let selected_idx = feed.selected_index();
-                        if let Some(post) = feed.posts.get(selected_idx) {
-                            if let Err(e) = self.api.repost(&post.data.uri, &post.data.cid).await {
-                                self.error = Some(format!("Failed to repost: {}", e));
-                            } else {
-                                // TODO: Add method to refresh post data
-                            }
-                        }
-                    },
-                    View::Thread(thread) => {
-                        let selected_idx = thread.selected_index();
-                        if let Some(post) = thread.posts.get(selected_idx) {
-                            if let Err(e) = self.api.repost(&post.uri, &post.cid).await {
-                                self.error = Some(format!("Failed to repost: {}", e));
-                            } else {
-                                // TODO: Add method to refresh post data
-                            }
-                        }
-                    },
-                }
-            },
+            // KeyCode::Char('r') => {
+            //     match self.view_stack.current_view() {
+            //         View::Timeline(feed) => {
+            //             let selected_idx = feed.selected_index();
+            //             if let Some(post) = feed.posts.get(selected_idx) {
+            //                 if let Err(e) = self.api.repost(&post.data.uri, &post.data.cid).await {
+            //                     self.error = Some(format!("Failed to repost: {}", e));
+            //                 } else {
+            //                     // TODO: Add method to refresh post data
+            //                 }
+            //             }
+            //         },
+            //         View::Thread(thread) => {
+            //             let selected_idx = thread.selected_index();
+            //             if let Some(post) = thread.posts.get(selected_idx) {
+            //                 if let Err(e) = self.api.repost(&post.uri, &post.cid).await {
+            //                     self.error = Some(format!("Failed to repost: {}", e));
+            //                 } else {
+            //                     // TODO: Add method to refresh post data
+            //                 }
+            //             }
+            //         },
+            //     }
+            // },
             KeyCode::Esc => {
                 self.view_stack.pop_view();
             }
@@ -276,7 +276,7 @@ impl App {
             };
             
             format!(
-                "Press q to quit, j/k to navigate, r to refresh {} / {}",
+                "Press q to quit, j/k to navigate, l to like/unlike {} / {}",
                 selected,
                 total
             )
