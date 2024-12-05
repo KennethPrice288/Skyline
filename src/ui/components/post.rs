@@ -4,8 +4,6 @@ use atrium_api::app::bsky::embed::images::ViewImage;
 use atrium_api::app::bsky::embed::record_with_media::ViewMediaRefs;
 use atrium_api::app::bsky::feed::defs::PostView;
 use atrium_api::app::bsky::feed::defs::PostViewEmbedRefs;
-use atrium_api::app::bsky::feed::defs::FeedViewPost;
-use atrium_api::app::bsky::feed::defs::ThreadViewPost;
 use atrium_api::types::Unknown;
 use chrono::{FixedOffset, Local};
 use ipld_core::ipld::Ipld;

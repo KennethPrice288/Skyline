@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{components::{feed::Feed, images::ImageManager, post_list::PostList}, views::{View, ViewStack}};
+use super::{components::{images::ImageManager, post_list::PostList}, views::{View, ViewStack}};
 
 use ratatui::crossterm::{
     event::{self, Event},
@@ -92,7 +92,7 @@ impl App {
                         if let Some(selected_post) = thread.posts.get(thread.selected_index()) {
                             let uri = selected_post.data.post.data.uri.to_string();
                             //Cant select same post over again
-                            if uri == thread.selected_uri {
+                            if uri == thread.anchor_uri {
                                 return;
                             }
                             if let Err(e) = self.view_stack.push_thread_view(uri, &self.api).await {

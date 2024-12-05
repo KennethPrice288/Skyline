@@ -1,9 +1,8 @@
 // In src/ui/views/mod.rs
 use std::sync::Arc;
 use anyhow::Result;
-use atrium_api::app::bsky::feed::get_post_thread::OutputThreadRefs;
 use log::info;
-use atrium_api::types::{LimitedNonZeroU64, LimitedU16};
+use atrium_api::types::LimitedU16;
 
 use crate::client::api::API;
 use crate::ui::components::{feed::Feed, images::ImageManager, thread::Thread};

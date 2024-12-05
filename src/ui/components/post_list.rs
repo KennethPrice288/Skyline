@@ -1,7 +1,6 @@
 // In src/ui/components/post_list.rs
-use std::collections::{HashMap, VecDeque};
-use atrium_api::app::bsky::feed::defs::{FeedViewPost, PostView};
-use ratatui::layout::Rect;
+use std::collections::VecDeque;
+use atrium_api::app::bsky::feed::defs::PostView;
 
 // A trait for components that manage a scrollable list of posts
 pub trait PostList {
