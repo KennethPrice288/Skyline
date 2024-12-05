@@ -56,34 +56,7 @@ impl Feed {
                 self.cursor = cursor;
             }
             Err(e) => {
-                // Try to determine if this is an authentication error
-                if let Some(api_error) = e.downcast_ref::<ApiError>() {
-                    match api_error {
-                        ApiError::SessionExpired | ApiError::NotAuthenticated => {
-                            // Try to refresh and retry
-                            match api.refresh_session().await {
-                                Ok(_) => {
-                                    // Retry getting timeline
-                                    match api.get_timeline(None).await {
-                                        Ok((posts, cursor)) => {
-                                            for feed_post in posts {
-                                                self.posts.push_back(feed_post.post.clone());
-                                            }
-                                            self.cursor = cursor;
-                                        }
-                                        Err(e) => {
-                                            return Err(e);
-                                        }
-                                    }
-                                }
-                                Err(e) => return Err(e),
-                            }
-                        }
-                        _ => return Err(e),
-                    }
-                } else {
-                    return Err(e);
-                }
+                return Err(e);
             }
         })
     }

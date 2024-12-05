@@ -1,7 +1,7 @@
 // In src/ui/components/thread.rs
 use std::{collections::{HashMap, HashSet, VecDeque}, sync::Arc};
 use atrium_api::{app::bsky::feed::{
-    defs::{ThreadViewPost, ThreadViewPostParentRefs, ThreadViewPostRepliesItem}, get_post_thread::OutputThreadRefs
+    defs::{PostViewData, ThreadViewPost, ThreadViewPostParentRefs, ThreadViewPostRepliesItem}, get_post_thread::OutputThreadRefs
 }, types::Unknown};
 use log::info;
 use ratatui::{
@@ -51,7 +51,8 @@ impl ThreadRelationships {
     }
 }
 pub struct Thread {
-    pub posts: VecDeque<ThreadViewPost>,
+    // pub posts: VecDeque<ThreadViewPost>,
+    pub posts: VecDeque<PostViewData>,
     pub rendered_posts: Vec<Post>,
     pub post_heights: HashMap<String, u16>,
     pub status_line: Option<String>,
@@ -92,7 +93,7 @@ impl Thread {
         
         // Build chain from anchor post to root
         while let Some(post) = self.find_post_by_uri(&current_uri) {
-            parent_chain.push(post.post.uri.clone());
+            parent_chain.push(post.uri.clone());
             if let Some(parent_uri) = Self::get_parent_uri_from_record(post) {
                 current_uri = parent_uri;
             } else {
@@ -115,9 +116,9 @@ impl Thread {
             
             for post in &self.posts {
                 if let Some(parent_uri) = Self::get_parent_uri_from_record(post) {
-                    if parent_uri == anchor_post.post.uri {
+                    if parent_uri == anchor_post.uri {
                         // Only show direct replies to anchor post
-                        relationships.mark_visible(&post.post.uri, Some(&parent_uri), anchor_indent + 1);
+                        relationships.mark_visible(&post.uri, Some(&parent_uri), anchor_indent + 1);
                     }
                 }
             }
@@ -126,8 +127,8 @@ impl Thread {
         self.cached_relationships = Some(relationships);
     }
 
-    fn find_post_by_uri(&self, uri: &str) -> Option<&ThreadViewPost> {
-        self.posts.iter().find(|p| p.post.uri == uri)
+    fn find_post_by_uri(&self, uri: &str) -> Option<&PostViewData> {
+        self.posts.iter().find(|p| p.uri == uri)
     }
 
     fn process_thread_data(&mut self, thread_data: OutputThreadRefs) -> Result<()> {
@@ -146,7 +147,7 @@ impl Thread {
                 }
 
                 // Add anchor post
-                self.add_post(*post.clone());
+                self.add_post(post.post.data.clone());
 
                 // Process direct replies only
                 if let Some(replies) = &post.replies {
@@ -156,7 +157,7 @@ impl Thread {
                                 match reply_refs {
                                     ThreadViewPostRepliesItem::ThreadViewPost(reply_post) => {
                                         // Only add the direct reply, not its replies
-                                        self.add_post(*reply_post.clone());
+                                        self.add_post(reply_post.post.data.clone());
                                     },
                                     _ => {}
                                 }
@@ -177,8 +178,8 @@ impl Thread {
     }
 
     // Helper to get the parent URI directly from the record field
-    fn get_parent_uri_from_record(post: &ThreadViewPost) -> Option<String> {
-        if let Unknown::Object(record) = &post.post.record {
+    fn get_parent_uri_from_record(post: &PostViewData) -> Option<String> {
+        if let Unknown::Object(record) = &post.record {
             // Try to get the "reply" field
             if let Some(reply) = record.get("reply") {
                 let reply_ipld = &**reply;
@@ -215,7 +216,7 @@ impl Thread {
                         }
                     }
                 }
-                self.add_post(*post.clone());
+                self.add_post(post.post.data.clone());
             }
             ThreadViewPostParentRefs::NotFoundPost(_) => {
                 // Optionally add a placeholder for not found posts
@@ -229,9 +230,9 @@ impl Thread {
         Ok(())
     }
     
-    fn add_post(&mut self, post: ThreadViewPost) {
-        let uri = post.post.uri.to_string();
-        self.rendered_posts.push(Post::new(post.post.clone(), self.image_manager.clone()));
+    fn add_post(&mut self, post: PostViewData) {
+        let uri = post.uri.to_string();
+        self.rendered_posts.push(Post::new(post.clone().into(), self.image_manager.clone()));
         self.posts.push_back(post);
         
         if uri == self.anchor_uri {
@@ -245,7 +246,7 @@ impl PostList for Thread {
         self.posts
             .iter()
             .take(self.base.scroll_offset)
-            .filter_map(|post| self.post_heights.get(&post.post.uri.to_string()))
+            .filter_map(|post| self.post_heights.get(&post.uri.to_string()))
             .sum()
     }
 
@@ -255,7 +256,7 @@ impl PostList for Thread {
 
         for (i, post) in self.posts.iter().enumerate().skip(self.base.scroll_offset) {
             let height = self.post_heights
-                .get(&post.post.uri.to_string())
+                .get(&post.uri.to_string())
                 .copied()
                 .unwrap_or(6);
 
@@ -273,13 +274,13 @@ impl PostList for Thread {
     fn ensure_post_heights(&mut self) {
         let posts_to_calculate: Vec<_> = self.posts
             .iter()
-            .filter(|post| !self.post_heights.contains_key(&post.post.uri.to_string()))
+            .filter(|post| !self.post_heights.contains_key(&post.uri.to_string()))
             .cloned()
             .collect();
 
         for post in posts_to_calculate {
-            let height = PostListBase::calculate_post_height(&post.post);
-            self.post_heights.insert(post.post.uri.to_string(), height);
+            let height = PostListBase::calculate_post_height(&post.clone().into());
+            self.post_heights.insert(post.uri.to_string(), height);
         }
     }
 
@@ -287,7 +288,7 @@ impl PostList for Thread {
         self.base.handle_scroll_down(
             &self.posts,
             |post| self.post_heights
-                .get(&post.post.uri.to_string())
+                .get(&post.uri.to_string())
                 .copied()
                 .unwrap_or(6)
         );

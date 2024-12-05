@@ -1,6 +1,7 @@
 // In src/ui/views/mod.rs
 use std::sync::Arc;
 use anyhow::Result;
+use atrium_api::app::bsky::feed::defs::PostViewData;
 use log::info;
 use atrium_api::types::LimitedU16;
 
@@ -71,6 +72,33 @@ impl ViewStack {
             self.views.pop()
         } else {
             None // Don't pop the last view
+        }
+    }
+    pub fn update_post(&mut self, updated_post: atrium_api::app::bsky::feed::defs::PostView) {
+        let uri = updated_post.data.uri.clone();
+        
+        // Update in each view
+        match self.current_view() {
+            View::Timeline(feed) => {
+                // Update in posts
+                if let Some(index) = feed.posts.iter().position(|p| p.data.uri == uri) {
+                    feed.posts[index] = updated_post.clone();
+                    // Also update the rendered version
+                    if let Some(rendered) = feed.rendered_posts.get_mut(index) {
+                        rendered.post = updated_post.clone();
+                    }
+                }
+            }
+            View::Thread(thread) => {
+                // Update in thread posts
+                if let Some(index) = thread.posts.iter().position(|p| p.uri == uri) {
+                    thread.posts[index] = updated_post.data.clone();
+                    // Also update the rendered version
+                    if let Some(rendered) = thread.rendered_posts.get_mut(index) {
+                        rendered.post = updated_post;
+                    }
+                }
+            }
         }
     }
 }

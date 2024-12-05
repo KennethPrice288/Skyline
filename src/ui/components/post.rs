@@ -23,28 +23,15 @@ pub struct PostState {
 }
 
 pub struct Post {
-    post: PostView,
+    pub post: PostView,
     image_manager: Arc<ImageManager>,
 }
 
 impl Post {
-    // pub fn new_from_feed(post: &FeedViewPost, image_manager: Arc<ImageManager>) -> Self {
-    //     Self {
-    //         post: post.post.clone(),
-    //         image_manager,
-    //     }
-    // }
-
-    // pub fn new_from_thread(post: &ThreadViewPost, image_manager: Arc<ImageManager>) -> Self {
-    //     Self {
-    //         post: post.post.clone(),
-    //         image_manager,
-    //     }
-    // }
 
     pub fn new(post: PostView, image_manager: Arc<ImageManager>) -> Self {
-        // Start a background task to load images if they exist
-        if let Some(images) = Self::extract_images_from_post(&post) {
+         // Start a background task to load images if they exist
+         if let Some(images) = Self::extract_images_from_post(&post) {
             info!("Found {} images in post", images.len());
             let image_manager_clone = image_manager.clone();
 
@@ -61,7 +48,6 @@ impl Post {
         } else {
             info!("No images found in post");
         }
-
         Self {
             post,
             image_manager,
@@ -71,6 +57,46 @@ impl Post {
     pub fn get_uri(&self) -> String {
         return self.post.data.uri.clone();
         // return self.post.post.uri.clone();
+    }
+
+    fn has_liked(&self) -> bool {
+        self.post.viewer
+            .as_ref()
+            .and_then(|v| v.data.like.as_ref())
+            .is_some()
+    }
+
+    fn has_reposted(&self) -> bool {
+        self.post.viewer
+            .as_ref()
+            .and_then(|v| v.data.repost.as_ref())
+            .is_some()
+    }
+
+    fn render_stats(&self) -> Line<'static> {
+        let like_text = format!("{}", self.post.data.like_count.unwrap_or(0));
+        let repost_text = format!("{}", self.post.data.repost_count.unwrap_or(0));
+
+        Line::from(vec![
+            Span::styled(
+                "♥ ",
+                Style::default().fg(if self.has_liked() {
+                    Color::Red
+                } else {
+                    Color::White
+                }),
+            ),
+            Span::styled(like_text, Style::default().fg(Color::White)),
+            Span::styled(
+                " ⟲ ",
+                Style::default().fg(if self.has_reposted() {
+                    Color::Blue
+                } else {
+                    Color::White
+                }),
+            ),
+            Span::styled(repost_text, Style::default().fg(Color::White)),
+        ])
     }
 
     pub fn extract_images_from_post(post: &PostView) -> Option<Vec<ViewImage>> {
@@ -99,6 +125,7 @@ impl Post {
             None
         }
     }
+
 }
 
 impl StatefulWidget for &mut Post {
@@ -147,19 +174,11 @@ impl StatefulWidget for &mut Post {
             ),
             Span::raw(formatted_time),
         ]);
-        let content = Line::from(post_text);
+        let content = ratatui::widgets::Paragraph::new(
+            ratatui::text::Text::styled(post_text, Style::default())
+        ).wrap(ratatui::widgets::Wrap { trim: true } );
 
-        let stats = {
-            let like_text = format!("{}", self.post.data.like_count.unwrap_or(999));
-            let repost_text = format!("{}", self.post.data.repost_count.unwrap_or(999));
-
-            Line::from(vec![
-                Span::styled("♥ ", Style::default().fg(Color::Red)),
-                Span::styled(like_text, Style::default().fg(Color::White)),
-                Span::styled(" ⟲ ", Style::default().fg(Color::Blue)),
-                Span::styled(repost_text, Style::default().fg(Color::White)),
-            ])
-        };
+        let stats = self.render_stats();
 
         let block = Block::default()
             .borders(Borders::ALL)

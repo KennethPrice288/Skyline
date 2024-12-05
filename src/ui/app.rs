@@ -52,6 +52,85 @@ impl App {
         self.loading = false;
     }
 
+    async fn update_post_data(&mut self, uri: &str) -> Result<()> {
+        if let Ok(updated_post) = self.api.get_post(uri).await {
+            self.view_stack.update_post(updated_post);
+        }
+        Ok(())
+    }
+
+    async fn handle_like_post(&mut self) {
+        let update_uri = match self.view_stack.current_view() {
+            View::Timeline(feed) => {
+                let selected_idx = feed.selected_index();
+                if let Some(post) = feed.posts.get(selected_idx) {
+                    let uri = post.data.uri.as_str();
+                    if post.viewer
+                    .as_ref()
+                    .and_then(|v| v.data.like.as_ref())
+                    .is_some() {
+                        let _ = self.api.unlike_post(post).await;
+                    } else {
+                        let cid = &post.data.cid;
+                        let _ = self.api.like_post(uri, cid).await;
+                    }
+                    uri.to_string()
+                } else {
+                    "".to_string()
+                }
+            },
+            View::Thread(thread) => {
+                let selected_idx = thread.selected_index();
+                if let Some(post) = thread.posts.get(selected_idx) {
+                    let uri = post.uri.as_str();
+                    if post.viewer
+                    .as_ref()
+                    .and_then(|v| v.data.like.as_ref())
+                    .is_some() {
+                        let _ = self.api.unlike_post(post).await;
+                    } else {
+                        let cid = &post.cid;
+                        let _ = self.api.like_post(uri, cid).await;
+                    } 
+                    uri.to_string()
+                } else {
+                        "".to_string()
+                    }
+                },
+            };
+    
+        if !update_uri.is_empty() {
+            let _ = self.update_post_data(&update_uri).await;
+        }
+    }
+
+    async fn handle_unlike_post(&mut self) {
+        let update_uri = match self.view_stack.current_view() {
+            View::Timeline(feed) => {
+                let selected_idx = feed.selected_index();
+                if let Some(post) = feed.posts.get(selected_idx) {
+                    self.api.unlike_post(post);
+                    post.uri.to_string()
+                } else {
+                    "".to_string()
+                }
+            }
+            View::Thread(thread) => {
+                let selected_idx = thread.selected_index();
+                if let Some(post) = thread.posts.get(selected_idx) {
+                    self.api.unlike_post(post);
+                    post.uri.to_string()
+                } else {
+                    "".to_string()
+                }
+            },
+        };
+        if !update_uri.is_empty() {
+            self.update_post_data(&update_uri).await;
+        }
+
+    }
+
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
@@ -90,7 +169,7 @@ impl App {
                     },
                     View::Thread(thread) => {
                         if let Some(selected_post) = thread.posts.get(thread.selected_index()) {
-                            let uri = selected_post.data.post.data.uri.to_string();
+                            let uri = selected_post.uri.to_string();
                             //Cant select same post over again
                             if uri == thread.anchor_uri {
                                 return;
@@ -102,6 +181,33 @@ impl App {
                     },
                 }
             }
+            KeyCode::Char('l') => {
+               self.handle_like_post().await;
+            },
+            KeyCode::Char('r') => {
+                match self.view_stack.current_view() {
+                    View::Timeline(feed) => {
+                        let selected_idx = feed.selected_index();
+                        if let Some(post) = feed.posts.get(selected_idx) {
+                            if let Err(e) = self.api.repost(&post.data.uri, &post.data.cid).await {
+                                self.error = Some(format!("Failed to repost: {}", e));
+                            } else {
+                                // TODO: Add method to refresh post data
+                            }
+                        }
+                    },
+                    View::Thread(thread) => {
+                        let selected_idx = thread.selected_index();
+                        if let Some(post) = thread.posts.get(selected_idx) {
+                            if let Err(e) = self.api.repost(&post.uri, &post.cid).await {
+                                self.error = Some(format!("Failed to repost: {}", e));
+                            } else {
+                                // TODO: Add method to refresh post data
+                            }
+                        }
+                    },
+                }
+            },
             KeyCode::Esc => {
                 self.view_stack.pop_view();
             }

@@ -44,8 +44,8 @@ impl PostListBase {
         }
         
         // Image section if present
-        if post.data.embed.is_some() {
-            height += 12;  // 10 for image area + 2 for borders
+        if super::post::Post::extract_images_from_post(post).is_some() {
+            height += 12;  // 10 for image area
         }
         
         height

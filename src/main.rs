@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
     }));
 
     // Create and run app
-    let api = API::new().await;
+    let api = API::new().await?;
     let app = App::new(api);
 
     if let Err(err) = app.run().await {
