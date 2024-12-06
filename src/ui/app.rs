@@ -59,7 +59,7 @@ impl App {
         self.loading = false;
     }
 
-    async fn spawn_update_task(&self, delay: u64, update_uri: String) {
+    async fn spawn_get_post_task(&self, delay: u64, update_uri: String) {
         let api = self.api.clone();
                 let sender = self.post_update_sender.clone();
                 
@@ -112,7 +112,7 @@ impl App {
             };
     
         if !update_uri.is_empty() {
-            self.spawn_update_task(100, update_uri).await;
+            self.spawn_get_post_task(200, update_uri).await;
         }
     }
 
@@ -157,7 +157,7 @@ impl App {
             };
 
             if !update_uri.is_empty() {
-                self.spawn_update_task(100, update_uri).await;
+                self.spawn_get_post_task(200, update_uri).await;
             }
     }
 
