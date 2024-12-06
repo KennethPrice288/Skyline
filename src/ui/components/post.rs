@@ -8,6 +8,7 @@ use atrium_api::types::Unknown;
 use chrono::{FixedOffset, Local};
 use ipld_core::ipld::Ipld;
 use log::info;
+use ratatui::widgets::Paragraph;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -73,30 +74,107 @@ impl Post {
             .is_some()
     }
 
-    fn render_stats(&self) -> Line<'static> {
+    fn get_stats(&self) -> Line<'static> {
         let like_text = format!("{}", self.post.data.like_count.unwrap_or(0));
         let repost_text = format!("{}", self.post.data.repost_count.unwrap_or(0));
-
+        let reply_text = format!("{}", self.post.data.reply_count.unwrap_or(0));
+    
         Line::from(vec![
+            // Like section
             Span::styled(
-                "♥ ",
-                Style::default().fg(if self.has_liked() {
-                    Color::Red
-                } else {
-                    Color::White
-                }),
+                if self.has_liked() { "❤️ " } else { "🤍 " },
+                Style::default(),
             ),
             Span::styled(like_text, Style::default().fg(Color::White)),
+            
+            // Subtle divider
+            Span::styled(" · ", Style::default().fg(Color::DarkGray)),
+            
+            // Repost section
             Span::styled(
-                " ⟲ ",
-                Style::default().fg(if self.has_reposted() {
-                    Color::Blue
-                } else {
-                    Color::White
-                }),
+                if self.has_reposted() { "✨ " } else { "🔁 " },
+                Style::default(),
             ),
             Span::styled(repost_text, Style::default().fg(Color::White)),
+            
+            // Subtle divider
+            Span::styled(" · ", Style::default().fg(Color::DarkGray)),
+            
+            // Reply section
+            Span::styled("💭 ", Style::default()),
+            Span::styled(reply_text, Style::default().fg(Color::White)),
         ])
+    }
+
+    fn get_reply_info(&self) -> Option<String> {
+    
+        if let Unknown::Object(record) = &self.post.data.record {
+            
+            if let Some(reply) = record.get("reply") {
+                
+                let reply_ipld = &**reply;
+                
+                if let ipld_core::ipld::Ipld::Map(reply_map) = reply_ipld {
+                    
+                    if let Some(parent) = reply_map.get("parent") {
+                        
+                        if let ipld_core::ipld::Ipld::Map(parent_map) = parent {
+                            
+                            // Get URI and handle together if possible
+                            let uri = parent_map.get("uri");
+                            if let Some(uri) = uri {
+                                if let ipld_core::ipld::Ipld::String(uri_str) = uri {
+                                    return Some(uri_str.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+            }
+        }
+        None
+    }
+
+    fn get_header(&self) -> Paragraph<'static> {
+        let author = &self.post.data.author;
+        let author_handle = author.handle.to_string();
+        let author_display_name = author.display_name.clone().unwrap_or(author_handle.clone());
+
+        let time_posted = &self.post.data.indexed_at;
+        let fixed_offset: &chrono::DateTime<FixedOffset> = time_posted.as_ref();
+        let local_time: chrono::DateTime<Local> = fixed_offset.with_timezone(&Local);
+
+        let formatted_time = local_time.format("%Y-%m-%d %-I:%M %p").to_string();
+
+        let mut spans = vec![
+            Span::styled(
+                author_display_name,
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" @"),
+            Span::raw(author_handle),
+        ];
+    
+        // Add reply indicator if it's a reply
+        if let Some(_uri) = self.get_reply_info() {
+            spans.extend_from_slice(&[
+                Span::styled(
+                    " · ✉️",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]);
+        }
+    
+        spans.extend_from_slice(&[
+            Span::styled(
+                " · ",
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::raw(formatted_time),
+        ]);
+    
+        Paragraph::new(Line::from(spans)).wrap(ratatui::widgets::Wrap { trim: true } )
     }
 
     pub fn extract_images_from_post(post: &PostView) -> Option<Vec<ViewImage>> {
@@ -136,9 +214,6 @@ impl StatefulWidget for &mut Post {
             return;
         }
 
-        let author = &self.post.data.author;
-
-        // Debug the record content
         let post_text = match &self.post.data.record {
             Unknown::Object(map) => match map.get("text") {
                 Some(data_model) => match &**data_model {
@@ -152,33 +227,12 @@ impl StatefulWidget for &mut Post {
             Unknown::Other(data) => format!("Other: {:?}", data),
         };
 
-        let author_handle = author.handle.to_string();
-        let author_display_name = author.display_name.clone().unwrap_or(author_handle.clone());
-
-        let time_posted = &self.post.data.indexed_at;
-        let fixed_offset: &chrono::DateTime<FixedOffset> = time_posted.as_ref();
-        let local_time: chrono::DateTime<Local> = fixed_offset.with_timezone(&Local);
-
-        let formatted_time = local_time.format("%Y-%m-%d %-I:%M %p").to_string();
-
-        let header = Line::from(vec![
-            Span::styled(
-                &author_display_name,
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" @"),
-            Span::raw(&author_handle),
-            Span::styled(
-                " posted at: ",
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(formatted_time),
-        ]);
+        let header = self.get_header();
         let content = ratatui::widgets::Paragraph::new(
             ratatui::text::Text::styled(post_text, Style::default())
-        ).wrap(ratatui::widgets::Wrap { trim: true } );
+        ).wrap(ratatui::widgets::Wrap { trim: false } );
 
-        let stats = self.render_stats();
+        let stats = self.get_stats();
 
         let block = Block::default()
             .borders(Borders::ALL)
