@@ -297,6 +297,9 @@ impl PostList for Thread {
     fn scroll_up(&mut self) {
         self.base.handle_scroll_up();
     }
+    fn needs_more_content(&self) -> bool {
+        self.selected_index() > self.posts.len().saturating_sub(5)
+    }
 }
 
 impl Widget for &mut Thread {

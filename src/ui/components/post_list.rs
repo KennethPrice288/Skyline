@@ -9,6 +9,7 @@ pub trait PostList {
     fn ensure_post_heights(&mut self);
     fn scroll_down(&mut self);
     fn scroll_up(&mut self);
+    fn needs_more_content(&self) -> bool;
 }
 
 // Shared data structure that both Feed and Thread can use

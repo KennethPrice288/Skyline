@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{components::images::ImageManager, views::{View, ViewStack}};
+use super::{components::{images::ImageManager, post_list::PostList}, views::{View, ViewStack}};
 
 use ratatui::crossterm::{
     event::{self, Event},
@@ -210,6 +210,14 @@ impl App {
         match key {
             KeyCode::Char('j') => {
                 self.view_stack.current_view().scroll_down();
+                // Check if we need to load more content
+                if let View::Timeline(feed) = self.view_stack.current_view() {
+                    if feed.needs_more_content() {
+                        self.loading = true;
+                        feed.scroll(&self.api).await;
+                        self.loading = false;
+                    }
+                }
             }
             KeyCode::Char('k') => {
                 self.view_stack.current_view().scroll_up();
