@@ -7,9 +7,70 @@ use atrium_api::types::LimitedU16;
 use crate::client::api::API;
 use crate::ui::components::{feed::Feed, images::ImageManager, thread::Thread};
 
+use super::components::post_list::PostList;
+
 pub enum View {
     Timeline(Feed),
     Thread(Thread),
+}
+
+impl View {
+    pub fn update_post(&mut self, updated_post: atrium_api::app::bsky::feed::defs::PostView) {
+        let uri = updated_post.data.uri.clone();
+        
+        // Update in each view
+        match self {
+            View::Timeline(feed) => {
+                // Update in posts
+                if let Some(index) = feed.posts.iter().position(|p| p.data.uri == uri) {
+                    feed.posts[index] = updated_post.clone();
+                    // Also update the rendered version
+                    if let Some(rendered) = feed.rendered_posts.get_mut(index) {
+                        rendered.post = updated_post.clone();
+                    }
+                }
+            }
+            View::Thread(thread) => {
+                // Update in thread posts
+                if let Some(index) = thread.posts.iter().position(|p| p.uri == uri) {
+                    thread.posts[index] = updated_post.data.clone();
+                    // Also update the rendered version
+                    if let Some(rendered) = thread.rendered_posts.get_mut(index) {
+                        rendered.post = updated_post;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn get_all_post_uris(&self) -> Vec<String> {
+        match self {
+            View::Timeline(feed) => {
+                feed.posts.iter()
+                    .map(|post| post.data.uri.to_string())
+                    .collect()
+            },
+            View::Thread(thread) => {
+                thread.posts.iter()
+                    .map(|post| post.uri.to_string())
+                    .collect()
+            }
+        }
+    }
+    
+    pub fn scroll_down(&mut self) {
+        match self {
+            View::Timeline(feed) => feed.scroll_down(),
+            View::Thread(thread) => thread.scroll_down(),
+        }
+    }
+
+    pub fn scroll_up(&mut self) {
+        match self {
+            View::Timeline(feed) => feed.scroll_up(),
+            View::Thread(thread) => thread.scroll_up(),
+        }
+    }
 }
 
 pub struct ViewStack {
@@ -71,33 +132,6 @@ impl ViewStack {
             self.views.pop()
         } else {
             None // Don't pop the last view
-        }
-    }
-    pub fn update_post(&mut self, updated_post: atrium_api::app::bsky::feed::defs::PostView) {
-        let uri = updated_post.data.uri.clone();
-        
-        // Update in each view
-        match self.current_view() {
-            View::Timeline(feed) => {
-                // Update in posts
-                if let Some(index) = feed.posts.iter().position(|p| p.data.uri == uri) {
-                    feed.posts[index] = updated_post.clone();
-                    // Also update the rendered version
-                    if let Some(rendered) = feed.rendered_posts.get_mut(index) {
-                        rendered.post = updated_post.clone();
-                    }
-                }
-            }
-            View::Thread(thread) => {
-                // Update in thread posts
-                if let Some(index) = thread.posts.iter().position(|p| p.uri == uri) {
-                    thread.posts[index] = updated_post.data.clone();
-                    // Also update the rendered version
-                    if let Some(rendered) = thread.rendered_posts.get_mut(index) {
-                        rendered.post = updated_post;
-                    }
-                }
-            }
         }
     }
 }

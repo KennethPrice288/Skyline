@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{components::{images::ImageManager, post_list::PostList}, views::{View, ViewStack}};
+use super::{components::images::ImageManager, views::{View, ViewStack}};
 
 use ratatui::crossterm::{
     event::{self, Event},
@@ -164,28 +164,10 @@ impl App {
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
-                match self.view_stack.current_view() {
-                    View::Timeline(feed) => {
-                        feed.scroll_down();
-                        // Only fetch more posts if we're near the end
-                        if feed.selected_index() >= feed.posts.len().saturating_sub(5) {
-                            feed.scroll(&self.api).await;
-                        }
-                    },
-                    View::Thread(thread) => {
-                        thread.scroll_down();
-                    },
-                }
+                self.view_stack.current_view().scroll_down();
             }
             KeyCode::Char('k') => {
-                match self.view_stack.current_view() {
-                    View::Timeline(feed) => {
-                        feed.scroll_up();
-                    },
-                    View::Thread(thread) => {
-                        thread.scroll_up();
-                    },
-                }
+                self.view_stack.current_view().scroll_up();
             }
             KeyCode::Char('v') => {
                 match self.view_stack.current_view() {
@@ -266,7 +248,7 @@ impl App {
         loop {
             // Check for post updates
             while let Ok(updated_post) = self.post_update_receiver.try_recv() {
-                self.view_stack.update_post(updated_post);
+                self.view_stack.current_view().update_post(updated_post);
             }
 
             terminal.draw(|f| draw(f, self))?;
