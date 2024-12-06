@@ -271,7 +271,7 @@ impl PostList for Thread {
         last_visible
     }
 
-    fn ensure_post_heights(&mut self) {
+    fn ensure_post_heights(&mut self, area: Rect) {
         let posts_to_calculate: Vec<_> = self.posts
             .iter()
             .filter(|post| !self.post_heights.contains_key(&post.uri.to_string()))
@@ -279,7 +279,7 @@ impl PostList for Thread {
             .collect();
 
         for post in posts_to_calculate {
-            let height = PostListBase::calculate_post_height(&post.clone().into());
+            let height = PostListBase::calculate_post_height(&post.clone().into(), area.width);
             self.post_heights.insert(post.uri.to_string(), height);
         }
     }
@@ -305,7 +305,7 @@ impl PostList for Thread {
 impl Widget for &mut Thread {
     fn render(self, area: Rect, buf: &mut Buffer) {
         self.base.last_known_height = area.height;
-        self.ensure_post_heights();
+        self.ensure_post_heights(area);
         
         let relationships = self.cached_relationships.as_ref().unwrap();
         let mut current_y = area.y;

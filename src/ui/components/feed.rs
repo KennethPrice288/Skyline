@@ -112,7 +112,7 @@ impl PostList for Feed {
         last_visible
     }
 
-    fn ensure_post_heights(&mut self) {
+    fn ensure_post_heights(&mut self, area: Rect) {
         let posts_to_calculate: Vec<_> = self.posts
             .iter()
             .filter(|post| !self.post_heights.contains_key(&post.data.uri.to_string()))
@@ -120,7 +120,7 @@ impl PostList for Feed {
             .collect();
 
         for post in posts_to_calculate {
-            let height = PostListBase::calculate_post_height(&post);
+            let height = PostListBase::calculate_post_height(&post, area.width);
             self.post_heights.insert(post.data.uri.to_string(), height);
         }
     }
@@ -149,7 +149,7 @@ impl Widget for &mut Feed {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // info!("Feed render area: {:?}", area);
         self.base.last_known_height = area.height;
-        self.ensure_post_heights();
+        self.ensure_post_heights(area);
 
         let mut current_y = area.y;
 

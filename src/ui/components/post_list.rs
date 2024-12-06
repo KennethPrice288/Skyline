@@ -1,12 +1,13 @@
 // In src/ui/components/post_list.rs
 use std::collections::VecDeque;
 use atrium_api::app::bsky::feed::defs::PostView;
+use ratatui::layout::Rect;
 
 // A trait for components that manage a scrollable list of posts
 pub trait PostList {
     fn get_total_height_before_scroll(&self) -> u16;
     fn get_last_visible_index(&self, area_height: u16) -> usize;
-    fn ensure_post_heights(&mut self);
+    fn ensure_post_heights(&mut self, area: Rect);
     fn scroll_down(&mut self);
     fn scroll_up(&mut self);
     fn needs_more_content(&self) -> bool;
@@ -29,24 +30,37 @@ impl PostListBase {
     }
 
     // Helper to calculate post height - moved from Feed
-    pub fn calculate_post_height(post: &PostView) -> u16 {
+    pub fn calculate_post_height(post: &PostView, available_width: u16) -> u16 {
         let mut height = 0;
         
         // Base structure (borders)
         height += 2;  // Top and bottom borders
-        
-        // Fixed components
         height += 1;  // Header line
         height += 1;  // Stats line
         
-        // Dynamic content height (text)
+        // Calculate content height based on available width
         if let Some(text) = Self::get_post_text(post) {
-            height += ((text.len() as f32 / 50.0).ceil() as u16).max(1);
+            // Account for borders and padding (2 chars on each side)
+            let usable_width = available_width.saturating_sub(4);
+            
+            // Calculate how many characters fit per line
+            let chars_per_line = if usable_width > 0 {
+                usable_width as usize
+            } else {
+                1
+            };
+            
+            // Using textwrap for accurate line counting
+            let wrapped_lines = textwrap::fill(&text, chars_per_line)
+                .lines()
+                .count();
+            
+            height += wrapped_lines as u16;
         }
         
         // Image section if present
         if super::post::Post::extract_images_from_post(post).is_some() {
-            height += 12;  // 10 for image area
+            height += 15;  // Fixed height for image area
         }
         
         height
