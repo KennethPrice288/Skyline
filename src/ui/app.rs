@@ -1,7 +1,9 @@
 use crate::client::api::API;
 use anyhow::Result;
+use atrium_api::app::bsky::feed::defs::PostView;
 use ratatui::crossterm::{event::KeyCode, terminal::EnterAlternateScreen};
 use secrecy::SecretString;
+use tokio::sync::mpsc;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -26,11 +28,14 @@ pub struct App {
     pub view_stack: ViewStack,
     pub status_line: String,
     pub image_manager: Arc<ImageManager>,
+    post_update_sender: mpsc::Sender<PostView>,
+    post_update_receiver: mpsc::Receiver<PostView>,
 }
 
 impl App {
     pub fn new(api: API) -> Self {
         let image_manager = Arc::new(ImageManager::new());
+        let (sender, receiver) = mpsc::channel(10);
         Self {
             api,
             loading: false,
@@ -38,6 +43,8 @@ impl App {
             view_stack: ViewStack::new(Arc::clone(&image_manager)),
             status_line: "".to_string(),
             image_manager,
+            post_update_sender: sender,
+            post_update_receiver: receiver,
         }
     }
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
@@ -52,11 +59,16 @@ impl App {
         self.loading = false;
     }
 
-    async fn update_post_data(&mut self, uri: &str) -> Result<()> {
-        if let Ok(updated_post) = self.api.get_post(uri).await {
-            self.view_stack.update_post(updated_post);
-        }
-        Ok(())
+    async fn spawn_update_task(&self, delay: u64, update_uri: String) {
+        let api = self.api.clone();
+                let sender = self.post_update_sender.clone();
+                
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                    if let Ok(updated_post) = api.get_post(&update_uri).await {
+                        sender.send(updated_post).await.ok();
+                    }
+                });
     }
 
     async fn handle_like_post(&mut self) {
@@ -100,7 +112,7 @@ impl App {
             };
     
         if !update_uri.is_empty() {
-            let _ = self.update_post_data(&update_uri).await;
+            self.spawn_update_task(100, update_uri).await;
         }
     }
 
@@ -145,7 +157,7 @@ impl App {
             };
 
             if !update_uri.is_empty() {
-                let _ = self.update_post_data(&update_uri).await;
+                self.spawn_update_task(100, update_uri).await;
             }
     }
 
@@ -252,6 +264,11 @@ impl App {
         let mut last_tick = Instant::now();
 
         loop {
+            // Check for post updates
+            while let Ok(updated_post) = self.post_update_receiver.try_recv() {
+                self.view_stack.update_post(updated_post);
+            }
+
             terminal.draw(|f| draw(f, self))?;
 
             let timeout = tick_rate

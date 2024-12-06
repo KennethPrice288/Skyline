@@ -23,6 +23,7 @@ pub enum ApiError {
     Unknown(String),
 }
 
+#[derive(Clone)]
 pub struct API {
     pub agent: BskyAgent,
 }
@@ -144,5 +145,4 @@ impl API {
         }
         Ok(())
     }
-
 }
