@@ -161,6 +161,51 @@ impl App {
             }
     }
 
+    pub async fn refresh_current_view(&mut self) -> Result<()> {
+        let uris = self.view_stack.current_view().get_all_post_uris();
+        log::info!("Refreshing view with {} total URIs", uris.len());
+        
+        // Create a vector to hold our futures
+        let mut fetch_futures = Vec::new();
+        
+        // Create futures for each chunk
+        for chunk in uris.chunks(25) {
+            let chunk_vec = chunk.to_vec();
+            let api = &self.api;
+            
+            // Create future for this chunk
+            let future = async move {
+                let params = atrium_api::app::bsky::feed::get_posts::ParametersData {
+                    uris: chunk_vec,
+                }.into();
+                api.agent.api.app.bsky.feed.get_posts(params).await
+            };
+            
+            fetch_futures.push(future);
+        }
+        
+        // Execute all futures concurrently
+        let results = futures::future::join_all(fetch_futures).await;
+        
+        // Process results
+        for result in results {
+            match result {
+                Ok(response) => {
+                    log::info!("Received {} posts from chunk", response.data.posts.len());
+                    for post in response.data.posts {
+                        self.view_stack.current_view().update_post(post);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Chunk error: {:?}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
@@ -201,7 +246,14 @@ impl App {
             },
             KeyCode::Esc => {
                 self.view_stack.pop_view();
-            }
+                match self.refresh_current_view().await {
+                    Ok(_) => log::info!("Successfully refreshed view"),
+                    Err(e) => {
+                        log::error!("Failed to refresh view: {:?}", e);
+                        self.error = Some(format!("Failed to refresh view: {}", e));
+                    }
+                }
+            },
             _ => {}
         }
     }

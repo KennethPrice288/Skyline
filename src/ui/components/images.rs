@@ -133,8 +133,6 @@ impl ImageManager {
         picker.set_protocol_type(ratatui_image::picker::ProtocolType::Sixel);
         picker.set_background_color(Some(image::Rgb::<u8>([0, 0, 0])));
 
-        info!("Created picker with font size: {:?}", picker.font_size());
-
         Self {
             client: reqwest::Client::new(),
             raw_cache: Arc::new(RwLock::new(ImageCache::new())),
@@ -206,11 +204,9 @@ impl ImageManager {
     pub async fn get_decoded_image(&self, url: &str) -> Result<Option<DynamicImage>> {
         // Check decoded cache first
         if let Some(decoded) = self.decoded_cache.write().await.get(url) {
-            info!("Found decoded image in cache for {}", url);
             return Ok(Some(decoded.clone()));
         }
 
-        info!("Attempting to load and decode image for {}", url);
         // If not in decoded cache, try to load and decode
         if let Ok(raw_data) = self.get_image(url).await {
             if let Ok(decoded) = load_from_memory(&raw_data) {
@@ -286,19 +282,16 @@ use ratatui::widgets::Paragraph;
 
 impl Widget for &mut PostImage {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let render_start = std::time::Instant::now();
 
         if area.height == 0 {
             return;
         }
 
-        info!("PostImage render area: {:?}", area);
         buf.set_style(area, Style::default());
 
         let block = Block::default().borders(Borders::ALL).title("Image");
 
         let inner_area = block.inner(area);
-        info!("Inner area after block: {:?}", inner_area);
 
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -312,9 +305,6 @@ impl Widget for &mut PostImage {
 
         let image_chunk = chunks[0];
         let alt_text_chunk = chunks[1];
-
-        info!("Image chunk dimensions: {:?}", image_chunk);
-        info!("Alt text chunk dimensions: {:?}", alt_text_chunk);
 
         // Alt text using Paragraph widget for automatic wrapping
         let alt_text = self.get_alt_text().unwrap_or("No alt text provided");
@@ -334,13 +324,10 @@ impl Widget for &mut PostImage {
             .image_manager
             .get_or_create_sixel(&self.image_data.thumb, image_chunk)
         {
-            let render_image_start = std::time::Instant::now();
 
             let protocol = protocol::Protocol::Sixel(sixel);
 
             Image::new(&protocol).render(image_chunk, buf);
-            let render_duration = render_image_start.elapsed();
-            info!("Sixel render took: {:?}", render_duration);
         } else {
             // Loading indicator
             buf.set_string(
@@ -350,8 +337,5 @@ impl Widget for &mut PostImage {
                 Style::default().fg(style::Color::DarkGray),
             );
         }
-
-        let total_duration = render_start.elapsed();
-        info!("Total PostImage render took: {:?}", total_duration);
     }
 }

@@ -17,24 +17,20 @@ pub enum View {
 impl View {
     pub fn update_post(&mut self, updated_post: atrium_api::app::bsky::feed::defs::PostView) {
         let uri = updated_post.data.uri.clone();
-        
-        // Update in each view
         match self {
             View::Timeline(feed) => {
-                // Update in posts
                 if let Some(index) = feed.posts.iter().position(|p| p.data.uri == uri) {
+                    log::info!("Updating timeline post at index {}", index);
                     feed.posts[index] = updated_post.clone();
-                    // Also update the rendered version
                     if let Some(rendered) = feed.rendered_posts.get_mut(index) {
-                        rendered.post = updated_post.clone();
+                        rendered.post = updated_post;
                     }
                 }
             }
             View::Thread(thread) => {
-                // Update in thread posts
                 if let Some(index) = thread.posts.iter().position(|p| p.uri == uri) {
+                    log::info!("Updating thread post at index {}", index);
                     thread.posts[index] = updated_post.data.clone();
-                    // Also update the rendered version
                     if let Some(rendered) = thread.rendered_posts.get_mut(index) {
                         rendered.post = updated_post;
                     }
