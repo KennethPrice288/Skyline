@@ -99,7 +99,7 @@ impl View {
             View::Timeline(feed) => feed.get_selected_post(),
             View::Thread(thread) => thread.get_selected_post(),
             View::AuthorFeed(author_feed) => author_feed.get_selected_post(),
-            View::Notifications(notification_view) => {None},
+            View::Notifications(_notification_view) => {None},
         }
     }
 
