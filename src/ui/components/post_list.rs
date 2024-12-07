@@ -114,7 +114,7 @@ impl PostListBase {
                         }
                         if let Some(first_post) = posts.get(self.scroll_offset) {
                             let first_height = get_height(first_post);
-                            y_position -= first_height;
+                            y_position = y_position.saturating_sub(first_height);
                             self.scroll_offset += 1;
                         }
                     }

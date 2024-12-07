@@ -23,6 +23,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         super::views::View::AuthorFeed(author_feed) => {
             f.render_widget(author_feed, chunks[0])
         },
+        super::views::View::Notifications(notification_view) => {
+            f.render_widget(notification_view, chunks[0])
+        },
     }
 
     f.render_widget(Paragraph::new(app.status_line.clone()), chunks[1]);

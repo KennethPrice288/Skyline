@@ -10,12 +10,14 @@ use crate::ui::components::author_profile::AuthorProfile;
 use crate::ui::components::{feed::Feed, images::ImageManager, thread::Thread};
 
 use super::components::author_feed::AuthorFeed;
+use super::components::notifications::NotificationView;
 use super::components::post_list::PostList;
 
 pub enum View {
     Timeline(Feed),
     Thread(Thread),
     AuthorFeed(AuthorFeed),
+    Notifications(NotificationView),
 }
 
 impl View {
@@ -49,6 +51,7 @@ impl View {
                     }
                 }
             },
+            View::Notifications(_notification_view) => {},
         }
     }
 
@@ -69,6 +72,7 @@ impl View {
                 .map(|post| post.data.uri.to_string())
                 .collect()
             },
+            View::Notifications(_notification_view) => {Vec::new()},
         }
     }
     
@@ -77,6 +81,7 @@ impl View {
             View::Timeline(feed) => feed.scroll_down(),
             View::Thread(thread) => thread.scroll_down(),
             View::AuthorFeed(author_feed) => author_feed.scroll_down(),
+            View::Notifications(notification_view) => notification_view.scroll_down(),
         }
     }
 
@@ -85,6 +90,7 @@ impl View {
             View::Timeline(feed) => feed.scroll_up(),
             View::Thread(thread) => thread.scroll_up(),
             View::AuthorFeed(author_feed) => author_feed.scroll_up(),
+            View::Notifications(notification_view) => notification_view.scroll_up(),
         }
     }
 
@@ -93,6 +99,7 @@ impl View {
             View::Timeline(feed) => feed.get_selected_post(),
             View::Thread(thread) => thread.get_selected_post(),
             View::AuthorFeed(author_feed) => author_feed.get_selected_post(),
+            View::Notifications(notification_view) => {None},
         }
     }
 
@@ -105,8 +112,8 @@ impl View {
 }
 
 pub struct ViewStack {
-    views: Vec<View>,
-    image_manager: Arc<ImageManager>,
+    pub views: Vec<View>,
+    pub image_manager: Arc<ImageManager>,
 }
 
 impl ViewStack {

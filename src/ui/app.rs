@@ -30,6 +30,8 @@ pub struct App {
     pub image_manager: Arc<ImageManager>,
     post_update_sender: mpsc::Sender<PostView>,
     post_update_receiver: mpsc::Receiver<PostView>,
+    notification_check_interval: Duration,
+    last_notification_check: Instant,
 }
 
 impl App {
@@ -45,6 +47,8 @@ impl App {
             image_manager,
             post_update_sender: sender,
             post_update_receiver: receiver,
+            notification_check_interval: Duration::from_secs(60),
+            last_notification_check: Instant::now(),
         }
     }
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
@@ -150,6 +154,15 @@ impl App {
         Ok(())
     }
 
+    async fn check_notifications(&mut self) {
+        if self.last_notification_check.elapsed() >= self.notification_check_interval {
+            if let View::Notifications(notifications) = self.view_stack.current_view() {
+                notifications.load_notifications(&mut self.api).await.ok();
+            }
+            self.last_notification_check = Instant::now();
+        }
+    }
+
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
@@ -189,6 +202,32 @@ impl App {
                         Ok(_) => {},
                         Err(e) => {log::info!("Error pushing author feed view: {:?}", e)}
                     }
+                } else {
+                    if let View::Notifications(notifications) = self.view_stack.current_view() {
+                        if let Some(notification) = notifications.notifications
+                            .get(notifications.selected_index()) 
+                        {
+                            let actor = AtIdentifier::Did(notification.author.did.clone());
+                            match self.view_stack.push_author_feed_view(actor, &self.api).await {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    log::error!("Error pushing author feed view: {:?}", e);
+                                    self.error = Some(format!("Failed to load author feed: {}", e));
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            KeyCode::Char('n') => {
+                // Push notifications view and load initial data
+                self.view_stack.push_notifications_view();
+                if let View::Notifications(notifications) = self.view_stack.current_view() {
+                    self.loading = true;
+                    notifications.load_notifications(&mut self.api).await.ok();
+                    self.loading = false;
+                    // Mark notifications as seen
+                    // self.api.mark_notifications_seen().await.ok();
                 }
             },
             KeyCode::Esc => {
@@ -273,7 +312,7 @@ impl App {
             }
 
             if last_tick.elapsed() >= tick_rate {
-                // Handle time-based updates here if needed
+                self.check_notifications().await;
                 last_tick = Instant::now();
             }
         }
@@ -296,6 +335,7 @@ impl App {
                 View::Timeline(feed) => (feed.selected_index() + 1, feed.posts.len()),
                 View::Thread(thread) => (thread.selected_index() + 1, thread.posts.len()),
                 View::AuthorFeed(author_feed) => {(author_feed.selected_index() + 1, author_feed.posts.len())},
+                View::Notifications(notification_view) => {(0, 0)},
             };
             
             format!(
