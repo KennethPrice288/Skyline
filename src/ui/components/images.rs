@@ -282,8 +282,9 @@ use ratatui::widgets::Paragraph;
 
 impl Widget for &mut PostImage {
     fn render(self, area: Rect, buf: &mut Buffer) {
-
+        log::info!("PostImage render called with area: {:?}", area);
         if area.height == 0 {
+            log::info!("Area height is 0, returning early");
             return;
         }
 

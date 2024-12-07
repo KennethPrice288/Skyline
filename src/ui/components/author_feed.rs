@@ -86,41 +86,67 @@ impl PostList for AuthorFeed {
     
         last_visible
     }
+
     fn ensure_post_heights(&mut self, area: Rect) {
         let posts_to_calculate: Vec<_> = self.posts
             .iter()
-            .filter(|post| !self.post_heights.contains_key(&post.data.uri.to_string()))
+            .filter(|post| !self.post_heights.contains_key(&post.uri.to_string()))
             .cloned()
             .collect();
-
+    
         for post in posts_to_calculate {
-            let height = PostListBase::calculate_post_height(&post, area.width);
-            self.post_heights.insert(post.data.uri.to_string(), height);
+            let has_images = super::post::Post::extract_images_from_post(&post.clone().into()).is_some();
+            let height = PostListBase::calculate_post_height(&post.clone().into(), area.width);
+            log::info!("Calculated height {} for post {}, has_images: {}", height, post.uri, has_images);
+            self.post_heights.insert(post.uri.to_string(), height);
         }
     }
     
     fn scroll_down(&mut self) {
-        // Special handling for the transition from profile to first post
-        if self.base.selected_index == 0 && !self.posts.is_empty() {
-            self.base.selected_index = 1;
-            
-            // Check if we need to scroll the profile out of view
-            let total_height = self.profile.height();
-            log::info!("profile height: {:?}", total_height);
-            if total_height >= self.base.last_known_height {
-                self.base.scroll_offset = 1;
-            }
+        if self.base.selected_index >= self.posts.len() - 1 {
             return;
         }
 
-        // Use the common scroll down logic from PostListBase
-        self.base.handle_scroll_down(
-            &self.posts,
-            |post| self.post_heights
+        let mut y_position = if self.base.scroll_offset == 0 { 
+            self.profile.height() 
+        } else { 
+            0 
+        };
+        let next_index = self.base.selected_index + 1;
+
+        for (i, post) in self.posts.iter().enumerate().skip(self.base.scroll_offset) {
+            if i == next_index {
+                let height = self.post_heights
+                    .get(&post.data.uri.to_string())
+                    .copied()
+                    .unwrap_or(6);
+                    
+                if y_position >= self.base.last_known_height || 
+                   (y_position + height) > self.base.last_known_height {
+                    while y_position >= self.base.last_known_height.saturating_sub(height) {
+                        if self.base.scroll_offset >= self.posts.len() - 1 {
+                            break;
+                        }
+                        if let Some(first_post) = self.posts.get(self.base.scroll_offset) {
+                            let first_height = self.post_heights
+                                .get(&first_post.data.uri.to_string())
+                                .copied()
+                                .unwrap_or(6);
+                            y_position -= first_height;
+                            self.base.scroll_offset += 1;
+                        }
+                    }
+                }
+                break;
+            }
+            let height = self.post_heights
                 .get(&post.data.uri.to_string())
                 .copied()
-                .unwrap_or(6)
-        );
+                .unwrap_or(6);
+            y_position += height;
+        }
+        
+        self.base.selected_index = next_index;
     }
     
     fn scroll_up(&mut self) {
@@ -161,6 +187,7 @@ impl Widget for &mut AuthorFeed {
         // Similar to Feed's render, but handle profile at top if scroll_offset is 0
         let mut current_y = area.y;
         self.base.last_known_height = area.height;
+        self.ensure_post_heights(area);
 
         if self.base.scroll_offset == 0 {
             let profile_area = Rect {

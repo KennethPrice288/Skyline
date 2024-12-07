@@ -101,7 +101,7 @@ impl PostListBase {
         
         let mut y_position = 0;
         let next_index = self.selected_index + 1;
-        
+
         for (i, post) in posts.iter().enumerate().skip(self.scroll_offset) {
             if i == next_index {
                 let height = get_height(post);
