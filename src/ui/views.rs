@@ -178,7 +178,6 @@ impl ViewStack {
 
         match api.agent.api.app.bsky.feed.get_author_feed(get_author_feed_params).await {
             Ok(response) => {
-                log::info!("Raw response: {:?}", response);
                 let author_feed_data = response.feed.iter().map(|p| p.post.clone()).collect();
                 let author_profile_data = api.agent.api.app.bsky.actor.get_profile(
                     atrium_api::app::bsky::actor::get_profile::ParametersData {
