@@ -210,7 +210,6 @@ impl ImageManager {
         // If not in decoded cache, try to load and decode
         if let Ok(raw_data) = self.get_image(url).await {
             if let Ok(decoded) = load_from_memory(&raw_data) {
-                info!("Successfully decoded image for {}", url);
                 self.decoded_cache
                     .write()
                     .await
@@ -282,9 +281,7 @@ use ratatui::widgets::Paragraph;
 
 impl Widget for &mut PostImage {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        log::info!("PostImage render called with area: {:?}", area);
         if area.height == 0 {
-            log::info!("Area height is 0, returning early");
             return;
         }
 
