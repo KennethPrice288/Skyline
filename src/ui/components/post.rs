@@ -23,16 +23,65 @@ pub struct PostState {
     pub selected: bool,
 }
 
+pub struct PostAvatar {
+    url: String,
+    image_manager: Arc<ImageManager>,
+}
+
+impl PostAvatar {
+    fn new(url: String, image_manager: Arc<ImageManager>) -> Self {
+        Self { url, image_manager }
+    }
+}
+
+impl Widget for &PostAvatar {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        if area.width < 2 || area.height < 2 {
+            return;
+        }
+
+        // Try to get cached Sixel
+        if let Some(sixel) = self.image_manager.get_or_create_sixel(&self.url, area) {
+            let protocol = ratatui_image::protocol::Protocol::Sixel(sixel);
+            ratatui_image::Image::new(&protocol).render(area, buf);
+        } else {
+            // Loading indicator - just a placeholder circle when loading
+            buf.set_string(
+                area.x,
+                area.y,
+                "○",
+                Style::default().fg(Color::DarkGray),
+            );
+        }
+    }
+}
+
 pub struct Post {
     pub post: PostView,
     image_manager: Arc<ImageManager>,
+    avatar: Option<PostAvatar>,
 }
 
 impl Post {
 
     pub fn new(post: PostView, image_manager: Arc<ImageManager>) -> Self {
-         // Start a background task to load images if they exist
-         if let Some(images) = Self::extract_images_from_post(&post) {
+        // Create avatar if URL exists
+        let avatar = post.data.author.avatar.as_ref().map(|url| {
+            // Start loading the avatar image in the background
+            let image_manager_clone = image_manager.clone();
+            let url_clone = url.clone();
+            
+            tokio::spawn(async move {
+                if let Ok(Some(_)) = image_manager_clone.get_decoded_image(&url_clone).await {
+                    info!("Successfully pre-loaded avatar image for post");
+                }
+            });
+
+            PostAvatar::new(url.clone(), image_manager.clone())
+        });
+
+        // Start a background task to load post images if they exist
+        if let Some(images) = Self::extract_images_from_post(&post) {
             info!("Found {} images in post", images.len());
             let image_manager_clone = image_manager.clone();
 
@@ -46,12 +95,12 @@ impl Post {
                     }
                 }
             });
-        } else {
-            info!("No images found in post");
         }
+
         Self {
             post,
             image_manager,
+            avatar,
         }
     }
 
@@ -174,7 +223,7 @@ impl Post {
             Span::raw(formatted_time),
         ]);
     
-        Paragraph::new(Line::from(spans)).wrap(ratatui::widgets::Wrap { trim: true } )
+        Paragraph::new(Line::from(spans)).wrap(ratatui::widgets::Wrap { trim: true })
     }
 
     pub fn extract_images_from_post(post: &PostView) -> Option<Vec<ViewImage>> {
@@ -208,6 +257,7 @@ impl Post {
 
 impl StatefulWidget for &mut Post {
     type State = PostState;
+    
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         // Skip rendering entirely if no space
         if area.height == 0 {
@@ -228,9 +278,8 @@ impl StatefulWidget for &mut Post {
         };
 
         let header = self.get_header();
-        let content = ratatui::widgets::Paragraph::new(
-            ratatui::text::Text::styled(post_text, Style::default())
-        ).wrap(ratatui::widgets::Wrap { trim: false } );
+        let content = ratatui::widgets::Paragraph::new(post_text)
+            .wrap(ratatui::widgets::Wrap { trim: false });
 
         let stats = self.get_stats();
 
@@ -244,10 +293,33 @@ impl StatefulWidget for &mut Post {
 
         let inner_area = block.inner(area);
 
-        let images = super::post::Post::extract_images_from_post(&self.post);
+        let images = Post::extract_images_from_post(&self.post);
 
         if inner_area.height > 0 {
-            let constraints = if images.is_some() {
+            let avatar_width = 3; // Space for small avatar
+            
+            // Split horizontally first to create avatar column
+            let horizontal_split = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Length(avatar_width),
+                    Constraint::Min(20),
+                ])
+                .split(inner_area);
+
+            // Avatar area
+            if let Some(avatar) = &self.avatar {
+                let avatar_area = Rect {
+                    x: horizontal_split[0].x,
+                    y: horizontal_split[0].y,
+                    width: avatar_width,
+                    height: 3, // Small square avatar
+                };
+                avatar.render(avatar_area, buf);
+            }
+
+            // Content area
+            let content_constraints = if images.is_some() {
                 vec![
                     Constraint::Length(1),  // Header
                     Constraint::Min(1),     // Content
@@ -262,29 +334,23 @@ impl StatefulWidget for &mut Post {
                 ]
             };
 
-            let chunks = Layout::default()
+            let content_chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(constraints)
-                .split(inner_area);
+                .constraints(content_constraints)
+                .split(horizontal_split[1]);
 
-            if images.is_some() {
-                if !images.as_ref().unwrap().is_empty() {
-                    let image_area = chunks[2];
-                    // info!("Image area: {:?}", image_area);
-
-                    // Just render the first image for now
-                    if let Some(first_image_data) = images.unwrap().get(0) {
-                        let mut first_image =
-                            PostImage::new(first_image_data.clone(), self.image_manager.clone());
-                        first_image.render(image_area, buf);
-                    }
+            if images.is_some() && !images.as_ref().unwrap().is_empty() {
+                let image_area = content_chunks[2];
+                if let Some(first_image_data) = images.unwrap().get(0) {
+                    let mut first_image = PostImage::new(first_image_data.clone(), self.image_manager.clone());
+                    first_image.render(image_area, buf);
                 }
             }
 
             block.render(area, buf);
-            header.render(chunks[0], buf);
-            content.render(chunks[1], buf);
-            stats.render(chunks[chunks.len() - 1], buf);
+            header.render(content_chunks[0], buf);
+            content.render(content_chunks[1], buf);
+            stats.render(content_chunks[content_chunks.len() - 1], buf);
         }
     }
 }
