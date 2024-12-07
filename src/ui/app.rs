@@ -197,23 +197,24 @@ impl App {
             },
             KeyCode::Char('a') => {
                 if let Some(post) = self.view_stack.current_view().get_selected_post() {
-                    let actor = AtIdentifier::Did(post.author.did.clone());
-                    match self.view_stack.push_author_feed_view(actor, &self.api).await {
-                        Ok(_) => {},
-                        Err(e) => {log::info!("Error pushing author feed view: {:?}", e)}
-                    }
-                } else {
-                    if let View::Notifications(notifications) = self.view_stack.current_view() {
-                        if let Some(notification) = notifications.notifications
-                            .get(notifications.selected_index()) 
-                        {
-                            let actor = AtIdentifier::Did(notification.author.did.clone());
-                            match self.view_stack.push_author_feed_view(actor, &self.api).await {
-                                Ok(_) => {},
-                                Err(e) => {
-                                    log::error!("Error pushing author feed view: {:?}", e);
-                                    self.error = Some(format!("Failed to load author feed: {}", e));
-                                }
+                    let selected_author_did = post.author.did.clone();
+                    
+                    // Check if we're already viewing this author's feed
+                    let is_same_author = match self.view_stack.current_view() {
+                        View::AuthorFeed(author_feed) => {
+                            // Get the DID from the current author feed's profile
+                            author_feed.profile.profile.did == selected_author_did
+                        },
+                        _ => false
+                    };
+            
+                    if !is_same_author {
+                        let actor = AtIdentifier::Did(selected_author_did);
+                        match self.view_stack.push_author_feed_view(actor, &self.api).await {
+                            Ok(_) => {},
+                            Err(e) => {
+                                log::info!("Error pushing author feed view: {:?}", e);
+                                self.error = Some(format!("Failed to load author feed: {}", e));
                             }
                         }
                     }

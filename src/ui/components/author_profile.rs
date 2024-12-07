@@ -45,7 +45,7 @@ impl Widget for &AuthorAvatar {
 }
 
 pub struct AuthorProfile {
-    profile: ProfileViewDetailed,
+    pub profile: ProfileViewDetailed,
     height: u16,
     avatar: Option<AuthorAvatar>,
 }
