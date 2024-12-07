@@ -235,14 +235,21 @@ impl App {
                 }
             },
             KeyCode::Char('n') => {
+                let currently_notifications_view = if let View::Notifications(_view)= self.view_stack.current_view() {
+                    true
+                } else {
+                    false
+                };
                 // Push notifications view and load initial data
-                self.view_stack.push_notifications_view();
-                if let View::Notifications(notifications) = self.view_stack.current_view() {
-                    self.loading = true;
-                    notifications.load_notifications(&mut self.api).await.ok();
-                    self.loading = false;
-                    // Mark notifications as seen
-                    // self.api.mark_notifications_seen().await.ok();
+                if !currently_notifications_view {
+                    self.view_stack.push_notifications_view();
+                    if let View::Notifications(notifications) = self.view_stack.current_view() {
+                        self.loading = true;
+                        notifications.load_notifications(&mut self.api).await.ok();
+                        self.loading = false;
+                        // Mark notifications as seen
+                        // self.api.mark_notifications_seen().await.ok();
+                    }
                 }
             },
             KeyCode::Esc => {
