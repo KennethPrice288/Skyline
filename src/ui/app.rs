@@ -97,7 +97,7 @@ impl App {
             let uri = post.uri.as_str();
             if post.viewer
                 .as_ref()
-                .and_then(|v| v.data.like.as_ref())
+                .and_then(|v| v.data.repost.as_ref())
                 .is_some() {
                 let _ = self.api.unrepost(&post).await;
             } else {
@@ -106,6 +106,8 @@ impl App {
             }
             
             self.spawn_get_post_task(200, uri.to_string()).await;
+        } else {
+            log::info!("couldnt get selected post for repost");
         }
     }
     

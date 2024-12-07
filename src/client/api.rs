@@ -111,7 +111,10 @@ impl API {
                 cid: cid.clone(),
             }.into(),
         };
-        self.agent.create_record(record_data).await?;
+        match self.agent.create_record(record_data).await {
+            Ok(_) => {},
+            Err(e) => {log::info!("error reposting: {:?}", e)}
+        }
         Ok(())
     }
 
