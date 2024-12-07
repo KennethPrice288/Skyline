@@ -5,3 +5,5 @@ pub mod notify;
 pub mod post;
 pub mod thread;
 pub mod post_list;
+pub mod author_profile;
+pub mod author_feed;

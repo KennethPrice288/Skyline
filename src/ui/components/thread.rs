@@ -300,6 +300,14 @@ impl PostList for Thread {
     fn needs_more_content(&self) -> bool {
         self.selected_index() > self.posts.len().saturating_sub(5)
     }
+
+    fn selected_index(&self) -> usize {
+        self.base.selected_index
+    }
+
+    fn get_post(&self, index: usize) -> Option<PostViewData> {
+        self.posts.get(index).cloned()
+    }
 }
 
 impl Widget for &mut Thread {

@@ -1,7 +1,7 @@
 
 use std::{collections::{HashMap, VecDeque}, sync::Arc};
 
-use atrium_api::app::bsky::feed::defs::PostView;
+use atrium_api::app::bsky::feed::defs::{PostView, PostViewData};
 use ratatui::{buffer::Buffer, layout::Rect, widgets::{Widget, StatefulWidget}};
 
 use crate::client::api::API;
@@ -141,6 +141,14 @@ impl PostList for Feed {
 
     fn needs_more_content(&self) -> bool {
         self.selected_index() > self.posts.len().saturating_sub(5)
+    }
+
+    fn selected_index(&self) -> usize {
+        self.base.selected_index
+    }
+
+    fn get_post(&self, index: usize) -> Option<PostViewData> {
+        self.posts.get(index).map(|post| post.data.clone())
     }
 
 }

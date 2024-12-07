@@ -1,6 +1,6 @@
 // In src/ui/components/post_list.rs
 use std::collections::VecDeque;
-use atrium_api::app::bsky::feed::defs::PostView;
+use atrium_api::app::bsky::feed::defs::{PostView, PostViewData};
 use ratatui::layout::Rect;
 
 // A trait for components that manage a scrollable list of posts
@@ -11,6 +11,12 @@ pub trait PostList {
     fn scroll_down(&mut self);
     fn scroll_up(&mut self);
     fn needs_more_content(&self) -> bool;
+    fn selected_index(&self) -> usize;
+    fn get_post(&self, index: usize) -> Option<PostViewData>;
+
+    fn get_selected_post(&self) -> Option<PostViewData> {
+        self.get_post(self.selected_index())
+    }
 }
 
 // Shared data structure that both Feed and Thread can use
@@ -134,4 +140,5 @@ impl PostListBase {
             self.scroll_offset = self.selected_index;
         }
     }
+    
 }
