@@ -178,7 +178,7 @@ impl ViewStack {
                         actor
                     }.into()
                 ).await?;
-                let author_profile = AuthorProfile::new(author_profile_data);
+                let author_profile = AuthorProfile::new(author_profile_data, self.image_manager.clone());
                 let author_feed_view = AuthorFeed::new(author_profile, author_feed_data, self.image_manager.clone());
                 self.views.push(View::AuthorFeed(author_feed_view));
             }
