@@ -7,7 +7,8 @@ use ratatui::{
     style::{Color, Style},
     widgets::{Block, Borders, Widget},
 };
-use crate::ui::views::{View, ViewStack};
+use crate::{client::api::API, ui::views::{View, ViewStack}};
+use anyhow::Result;
 
 use super::{images::ImageManager, post_list::{PostList, PostListBase}};
 
@@ -99,6 +100,37 @@ impl NotificationView {
     pub fn get_notification(&self) -> NotificationData {
         let selected_idx = self.selected_index();
         return self.notifications[selected_idx].clone();
+    }
+
+    pub async fn handle_new_notification(
+        &mut self,
+        _uri: String,
+        api: &API,
+    ) -> Result<()> {
+        // Use existing API call to get fresh notifications
+        let params = atrium_api::app::bsky::notification::list_notifications::Parameters {
+            data: atrium_api::app::bsky::notification::list_notifications::ParametersData {
+                cursor: None,
+                limit: Some(LimitedNonZeroU8::MIN),  // Just get latest
+                seen_at: None,
+                priority: None,
+            },
+            extra_data: ipld_core::ipld::Ipld::Null,
+        };
+
+        match api.agent.api.app.bsky.notification.list_notifications(params).await {
+            Ok(response) => {
+                if let Some(new_notification) = response.notifications.first() {
+                    // Only add if it's actually new
+                    if !self.notifications.iter().any(|n| n.uri == new_notification.data.uri) {
+                        self.notifications.push_front(new_notification.data.clone());
+                        self.notification_heights.insert(new_notification.data.uri.clone(), 3);
+                    }
+                }
+                return Ok(())
+            }
+            Err(e) =>return Err(e.into())
+        }
     }
 }
 

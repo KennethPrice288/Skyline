@@ -1,4 +1,4 @@
-use crate::client::api::API;
+use crate::client::{api::API, update::{UpdateEvent, UpdateManager}};
 use anyhow::Result;
 use atrium_api::{app::bsky::feed::defs::PostView, types::string::AtIdentifier};
 use ratatui::crossterm::{event::KeyCode, terminal::EnterAlternateScreen};
@@ -30,8 +30,9 @@ pub struct App {
     pub image_manager: Arc<ImageManager>,
     post_update_sender: mpsc::Sender<PostView>,
     post_update_receiver: mpsc::Receiver<PostView>,
-    notification_check_interval: Duration,
-    last_notification_check: Instant,
+    // notification_check_interval: Duration,
+    // last_notification_check: Instant,
+    update_manager: UpdateManager,
 }
 
 impl App {
@@ -47,8 +48,9 @@ impl App {
             image_manager,
             post_update_sender: sender,
             post_update_receiver: receiver,
-            notification_check_interval: Duration::from_secs(60),
-            last_notification_check: Instant::now(),
+            // notification_check_interval: Duration::from_secs(120),
+            // last_notification_check: Instant::now(),
+            update_manager: UpdateManager::new(),
         }
     }
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
@@ -156,14 +158,14 @@ impl App {
         Ok(())
     }
 
-    async fn check_notifications(&mut self) {
-        if self.last_notification_check.elapsed() >= self.notification_check_interval {
-            if let View::Notifications(notifications) = self.view_stack.current_view() {
-                notifications.load_notifications(&mut self.api).await.ok();
-            }
-            self.last_notification_check = Instant::now();
-        }
-    }
+    // async fn check_notifications(&mut self) {
+    //     if self.last_notification_check.elapsed() >= self.notification_check_interval {
+    //         if let View::Notifications(notifications) = self.view_stack.current_view() {
+    //             notifications.load_notifications(&mut self.api).await.ok();
+    //         }
+    //         self.last_notification_check = Instant::now();
+    //     }
+    // }
 
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
@@ -278,6 +280,11 @@ impl App {
             self.login(identifier, password).await?;
         }
 
+        // Start update manager after authentication
+        if let Some(session) = self.api.agent.get_session().await {
+            self.update_manager.start(session.access_jwt.clone()).await?;
+        }
+
         // Load initial data
         self.load_initial_posts().await;
         self.loading = false;
@@ -324,8 +331,22 @@ impl App {
                 }
             }
 
+            // Handle real-time updates
+            while let Some(event) = self.update_manager.try_recv() {
+                match event {
+                    UpdateEvent::Notification { uri } => {
+                        if let View::Notifications(notifications) = self.view_stack.current_view() {
+                            notifications.handle_new_notification(uri, &self.api).await?;
+                        }
+                    }
+                    UpdateEvent::ConnectionStatus(_status) => {
+                        // Handle connection status...
+                    }
+                }
+            }
+            
             if last_tick.elapsed() >= tick_rate {
-                self.check_notifications().await;
+                // self.check_notifications().await;
                 last_tick = Instant::now();
             }
         }
