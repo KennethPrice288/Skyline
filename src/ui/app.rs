@@ -196,7 +196,17 @@ impl App {
                 self.handle_repost().await;
             },
             KeyCode::Char('a') => {
-                if let Some(post) = self.view_stack.current_view().get_selected_post() {
+                if let View::Notifications(notifications) = self.view_stack.current_view() {
+                    let selected_author_did = &notifications.get_notification().author.did;
+                    let actor = AtIdentifier::Did(selected_author_did.clone());
+                    match self.view_stack.push_author_feed_view(actor, &self.api).await {
+                        Ok(_) => {},
+                        Err(e) => {
+                            log::info!("Error pushing author feed view: {:?}", e);
+                            self.error = Some(format!("Failed to load author feed: {}", e));
+                        }
+                    }
+                } else if let Some(post) = self.view_stack.current_view().get_selected_post() {
                     let selected_author_did = post.author.did.clone();
                     
                     // Check if we're already viewing this author's feed

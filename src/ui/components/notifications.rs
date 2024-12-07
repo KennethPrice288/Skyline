@@ -96,6 +96,10 @@ impl NotificationView {
             action
         )
     }
+    pub fn get_notification(&self) -> NotificationData {
+        let selected_idx = self.selected_index();
+        return self.notifications[selected_idx].clone();
+    }
 }
 
 impl PostList for NotificationView {
