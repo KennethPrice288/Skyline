@@ -299,7 +299,7 @@ impl App {
             };
             
             format!(
-                "Press q to quit, j/k to navigate, l to like/unlike, v to view  a thread and ESC to back out of one {} / {}",
+                "Press q to quit, j/k to navigate, l to like/unlike, v to view  a thread, a to view a profile, and ESC to back out of one {} / {}",
                 selected,
                 total
             )
