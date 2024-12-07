@@ -335,7 +335,7 @@ impl App {
                 View::Timeline(feed) => (feed.selected_index() + 1, feed.posts.len()),
                 View::Thread(thread) => (thread.selected_index() + 1, thread.posts.len()),
                 View::AuthorFeed(author_feed) => {(author_feed.selected_index() + 1, author_feed.posts.len())},
-                View::Notifications(notification_view) => {(0, 0)},
+                View::Notifications(notification_view) => {(notification_view.selected_index() + 1, notification_view.notifications.len())},
             };
             
             format!(
