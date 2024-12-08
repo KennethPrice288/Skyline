@@ -68,6 +68,10 @@ impl PostListBase {
         if super::post::Post::extract_images_from_post(post).is_some() {
             height += 15;  // Fixed height for image area
         }
+
+        if super::post::Post::extract_quoted_post_data(post).is_some() {
+            height += 15; // Fixed height for quote for now
+        }
         
         height
     }
