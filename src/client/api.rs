@@ -148,4 +148,35 @@ impl API {
         }
         Ok(())
     }
+
+    pub async fn follow_actor(&mut self, did: atrium_api::types::string::Did) -> Result<()> {
+        let record_data = atrium_api::app::bsky::graph::follow::RecordData {
+            created_at: atrium_api::types::string::Datetime::now(),
+            subject: did.clone(),
+        };
+        match self.agent.create_record(record_data).await {
+            Ok(_) => {log::info!("Followed did: {:?}", did); Ok(())},
+            Err(e) => {log::error!("Failed to follow did: {:?} with error: {}", did, e); Err(e.into())},
+        }
+    }
+
+    pub async fn unfollow_actor(&mut self, did: &atrium_api::types::string::Did) -> Result<()> {
+        // First get the profile to find the follow record URI
+        let params = atrium_api::app::bsky::actor::get_profile::ParametersData {
+            actor: atrium_api::types::string::AtIdentifier::Did(did.clone())
+        }.into();
+        
+        if let Ok(profile) = self.agent.api.app.bsky.actor.get_profile(params).await {
+            if let Some(viewer) = &profile.viewer {
+                if let Some(follow) = &viewer.following {
+                    // If we have the follow record URI, delete it
+                    self.agent.delete_record(&follow).await?;
+                    log::info!("Unfollowed did: {:?}", did);
+                    return Ok(());
+                }
+            }
+        }
+        
+        Err(anyhow::anyhow!("Could not find follow record to delete"))
+    }
 }

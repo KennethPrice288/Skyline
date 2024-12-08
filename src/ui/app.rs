@@ -167,6 +167,52 @@ impl App {
     //     }
     // }
 
+    async fn handle_follow(&mut self) {
+        let did = match self.view_stack.current_view() {
+            // When viewing notifications
+            View::Notifications(notifications) => {
+                let notification = notifications.get_notification();
+                Some(notification.author.did.clone())
+            },
+            // When viewing regular posts (timeline, thread, author feed)
+            _ => {
+                self.view_stack.current_view()
+                    .get_selected_post()
+                    .map(|post| post.author.did.clone())
+            }
+        };
+    
+        if let Some(did) = did {
+            // Get profile to check current follow status
+            let params = atrium_api::app::bsky::actor::get_profile::ParametersData {
+                actor: atrium_api::types::string::AtIdentifier::Did(did.clone())
+            }.into();
+            
+            match self.api.agent.api.app.bsky.actor.get_profile(params).await {
+                Ok(profile) => {
+                    let is_following = profile.viewer
+                        .as_ref()
+                        .and_then(|v| v.following.as_ref())
+                        .is_some();
+    
+                    if is_following {
+                        let _ = self.api.unfollow_actor(&did).await;
+                    } else {
+                        let _ = self.api.follow_actor(did).await;
+                    }
+    
+                    // Refresh the current view to show updated follow status
+                    if let Err(e) = self.refresh_current_view().await {
+                        self.error = Some(format!("Failed to refresh view: {}", e));
+                    }
+                }
+                Err(e) => {
+                    self.error = Some(format!("Failed to get profile: {}", e));
+                }
+            }
+        }
+    }
+
     pub async fn handle_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') => {
@@ -252,6 +298,9 @@ impl App {
                     }
                 }
             },
+            KeyCode::Char('f') => {
+                self.handle_follow().await;
+            }
             KeyCode::Esc => {
                 self.view_stack.pop_view();
                 match self.refresh_current_view().await {
