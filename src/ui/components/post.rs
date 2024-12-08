@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use atrium_api::app::bsky::embed::images::ViewImage;
-use atrium_api::app::bsky::embed::record::ViewRecordData;
 use atrium_api::app::bsky::embed::record::ViewRecordRefs;
 use atrium_api::app::bsky::embed::record_with_media::ViewMediaRefs;
 use atrium_api::app::bsky::feed::defs::PostView;
