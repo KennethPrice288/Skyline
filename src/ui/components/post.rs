@@ -392,7 +392,7 @@ impl Post {
         }
     }
 
-    fn get_post_text(post: &PostViewData) -> String {
+    pub fn get_post_text(post: &PostViewData) -> String {
         match &post.record {
             Unknown::Object(map) => match map.get("text") {
                 Some(data_model) => match &**data_model {
@@ -409,6 +409,8 @@ impl Post {
 
 }
 
+// In the StatefulWidget implementation for &mut Post
+
 impl StatefulWidget for &mut Post {
     type State = PostState;
     
@@ -419,11 +421,9 @@ impl StatefulWidget for &mut Post {
         }
 
         let post_text = super::post::Post::get_post_text(&self.post);
-
         let header = super::post::Post::get_header(&self.post.data);
         let content = ratatui::widgets::Paragraph::new(post_text)
             .wrap(ratatui::widgets::Wrap { trim: false });
-
         let stats = super::post::Post::get_stats(&self.post);
 
         let block = Block::default()
@@ -461,50 +461,54 @@ impl StatefulWidget for &mut Post {
                 avatar.render(avatar_area, buf);
             }
 
-            // Content area
-            let mut content_constraints = if images.is_some() {
-                vec![
-                    Constraint::Length(1),  // Header
-                    Constraint::Min(1),     // Content
-                    Constraint::Length(15), // Images
-                    Constraint::Length(1),  // Stats
-                ]
-            } else {
-                vec![
-                    Constraint::Length(1), // Header
-                    Constraint::Min(1),    // Content
-                    Constraint::Length(1), // Stats
-                ]
-            };
+            // Build content constraints based on what we need to show
+            let mut content_constraints = vec![
+                Constraint::Length(1),  // Header
+                Constraint::Min(1),     // Content
+            ];
 
+            // Add quoted post before images if it exists
             if self.quoted_post_data.is_some() {
-                content_constraints.push(
-                    Constraint::Length(10)
-                );
+                content_constraints.push(Constraint::Min(3)); // Quote
             }
+
+            // Add images if they exist
+            if images.is_some() {
+                content_constraints.push(Constraint::Length(15)); // Images
+            }
+
+            // Stats always go at the end
+            content_constraints.push(Constraint::Length(1)); // Stats
 
             let content_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints(content_constraints)
                 .split(horizontal_split[1]);
 
-            if images.is_some() && !images.as_ref().unwrap().is_empty() {
-                let image_area = content_chunks[2];
-                if let Some(first_image_data) = images.unwrap().get(0) {
-                    let mut first_image = PostImage::new(first_image_data.clone(), self.image_manager.clone());
-                    first_image.render(image_area, buf);
-                }
-            }
-
-            if self.quoted_post_data.is_some() {
-                let quote_area = content_chunks.last().unwrap();
-                self.render_quoted_post(*quote_area, buf);
-            }
-
+            // Render the components in order
             block.render(area, buf);
             header.render(content_chunks[0], buf);
             content.render(content_chunks[1], buf);
-            stats.render(content_chunks[content_chunks.len() - 1], buf);
+
+            let mut current_chunk = 2;
+
+            // Render quote if present
+            if self.quoted_post_data.is_some() {
+                self.render_quoted_post(content_chunks[current_chunk], buf);
+                current_chunk += 1;
+            }
+
+            // Render images if present
+            if images.is_some() && !images.as_ref().unwrap().is_empty() {
+                if let Some(first_image_data) = images.unwrap().get(0) {
+                    let mut first_image = PostImage::new(first_image_data.clone(), self.image_manager.clone());
+                    first_image.render(content_chunks[current_chunk], buf);
+                }
+                current_chunk += 1;
+            }
+
+            // Render stats at the last chunk
+            stats.render(content_chunks[current_chunk], buf);
         }
     }
 }
