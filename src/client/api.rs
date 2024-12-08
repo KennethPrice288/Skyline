@@ -215,4 +215,18 @@ impl API {
             Err(e) => Err(anyhow::anyhow!("Failed to create post: {}", e))
         }
     }
+    pub async fn delete_post(&self, uri: &str) -> Result<()> {
+        let repo_uri: String = uri.try_into()?;
+        
+        match self.agent.delete_record(&repo_uri).await {
+            Ok(_) => {
+                log::info!("Successfully deleted post: {}", uri);
+                Ok(())
+            },
+            Err(e) => {
+                log::error!("Failed to delete post: {}", e);
+                Err(ApiError::NetworkError(e.to_string()).into())
+            }
+        }
+    }
 }

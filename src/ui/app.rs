@@ -327,6 +327,12 @@ impl App {
             (KeyCode::Char('r'), KeyModifiers::NONE) => {
                 self.handle_repost().await;
             },
+            (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+                match self.refresh_current_view().await {
+                    Ok(_) => log::info!("Refreshed current view"),
+                    Err(_) => log::warn!("Failed to refresh current view"),
+                }
+            }
             (KeyCode::Char('a'), KeyModifiers::NONE) => {
                 if let View::Notifications(notifications) = self.view_stack.current_view() {
                     let selected_author_did = &notifications.get_notification().author.did;
@@ -373,6 +379,28 @@ impl App {
                             self.error = Some(format!("Failed to load your profile: {}", e));
                         }
                     }
+                }
+            },
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+                if let Some(post) = self.view_stack.current_view().get_selected_post() {
+                    // Only allow deletion if the post author's DID matches the current user's DID
+                    if let Some(session) = self.api.agent.get_session().await {
+                        if post.author.did == session.did {
+                            match self.api.delete_post(&post.uri).await {
+                                Ok(_) => {
+                                    self.status_line = "Post deleted successfully".to_string();
+                                    // Refresh the current view to reflect the deletion
+                                    self.refresh_current_view().await.ok();
+                                }
+                                Err(e) => {
+                                    self.error = Some(format!("Failed to delete post: {}", e));
+                                }
+                            }
+                        } else {
+                            self.status_line = "You can only delete your own posts".to_string();
+                        }
+                    }
+                    let _ = self.refresh_current_view().await;
                 }
             },
             (KeyCode::Char('n'), KeyModifiers::NONE) => {
