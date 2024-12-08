@@ -5,9 +5,7 @@ use atrium_api::{app::bsky::feed::{
 }, types::Unknown};
 use log::info;
 use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    widgets::{Widget, StatefulWidget}
+    buffer::Buffer, layout::Rect, style::{Color, Style}, widgets::{Block, Borders, StatefulWidget, Widget}
 };
 
 use super::{
@@ -315,8 +313,19 @@ impl Widget for &mut Thread {
         self.base.last_known_height = area.height;
         self.ensure_post_heights(area);
         
+        let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(
+            Color::White
+        ))
+        .title("🌆 Thread View");
+
+        let inner_area = block.inner(area);
+    
         let relationships = self.cached_relationships.as_ref().unwrap();
-        let mut current_y = area.y;
+        let mut current_y = inner_area.y;
+
+        block.render(area, buf);
         
         for (i, post) in self.rendered_posts.iter_mut()
             .enumerate()
@@ -328,7 +337,7 @@ impl Widget for &mut Thread {
                 .copied()
                 .unwrap_or(6);
             
-            let remaining_height = area.height.saturating_sub(current_y - area.y);
+            let remaining_height = inner_area.height.saturating_sub(current_y - inner_area.y);
             if remaining_height == 0 {
                 break;
             }
@@ -337,9 +346,9 @@ impl Widget for &mut Thread {
             let x_offset = indent_level * 2; // 2 spaces per indent level
             
             let post_area = Rect {
-                x: area.x + x_offset,
+                x: inner_area.x + x_offset,
                 y: current_y,
-                width: area.width.saturating_sub(x_offset),
+                width: inner_area.width.saturating_sub(x_offset),
                 height: remaining_height.min(post_height),
             };
             

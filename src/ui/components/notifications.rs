@@ -244,8 +244,8 @@ impl Widget for &mut NotificationView {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let block = Block::default()
             .borders(Borders::ALL)
-            .title("Notifications");
-
+            .title("🌆 Notifications");
+        
         let inner_area = block.inner(area);
         block.render(area, buf);
 

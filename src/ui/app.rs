@@ -63,10 +63,12 @@ impl App {
 
     pub async fn load_initial_posts(&mut self) {
         self.loading = true;
+        self.update_status();
         if let View::Timeline(feed) = self.view_stack.current_view() {
             feed.load_initial_posts(&mut self.api).await.unwrap();
         }
         self.loading = false;
+        self.update_status();
     }
 
     async fn spawn_get_post_task(&self, delay: u64, update_uri: String) {
@@ -434,6 +436,7 @@ impl App {
             _ => {}
         }
     }
+    self.update_status();
     }
     
     pub async fn run(mut self) -> Result<()> {
@@ -550,7 +553,7 @@ impl App {
             };
             
             format!(
-                "Press q to quit, j/k to navigate, l to like/unlike, v to view  a thread, a to view a profile, and ESC to back out of one {} / {}",
+                "🌆 Press q to quit, j/k to navigate, l to like/unlike, v to view a thread, a to view a profile, and ESC to back out of one {} / {}",
                 selected,
                 total
             )

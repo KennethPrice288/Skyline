@@ -85,7 +85,7 @@ impl StatefulWidget for &PostComposer {
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(if self.reply_to.is_some() { "Reply" } else { "New Post" })
+            .title(if self.reply_to.is_some() { "🌇 Reply" } else { "🏙️ New Post" })
             .border_style(Style::default().fg(if state.is_active { Color::Green } else { Color::White }));
 
         let inner_area = block.inner(area);

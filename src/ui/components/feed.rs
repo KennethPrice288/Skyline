@@ -2,7 +2,7 @@
 use std::{collections::{HashMap, VecDeque}, sync::Arc};
 
 use atrium_api::app::bsky::feed::defs::{PostView, PostViewData};
-use ratatui::{buffer::Buffer, layout::Rect, widgets::{Widget, StatefulWidget}};
+use ratatui::{buffer::Buffer, layout::Rect, widgets::{Block, Borders, StatefulWidget, Widget}};
 
 use crate::client::api::API;
 use anyhow::Result;
@@ -155,12 +155,16 @@ impl PostList for Feed {
 
 impl Widget for &mut Feed {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let block = Block::default()
+        .borders(Borders::ALL)
+        .title("🌃 Timeline");
+        let inner_area = block.inner(area);
         // info!("Feed render area: {:?}", area);
-        self.base.last_known_height = area.height;
-        self.ensure_post_heights(area);
+        self.base.last_known_height = inner_area.height;
+        self.ensure_post_heights(inner_area);
 
-        let mut current_y = area.y;
-
+        let mut current_y = inner_area.y;
+        block.render(area, buf);
         // Use the pre-created post components
         for (i, post) in self
             .rendered_posts
@@ -170,15 +174,15 @@ impl Widget for &mut Feed {
         {
             let post_height = self.post_heights.get(&post.get_uri()).copied().unwrap_or(6);
 
-            let remaining_height = area.height.saturating_sub(current_y);
+            let remaining_height = inner_area.height.saturating_sub(current_y);
             if remaining_height == 0 {
                 break;
             }
 
             let post_area = Rect {
-                x: area.x,
+                x: inner_area.x,
                 y: current_y,
-                width: area.width,
+                width: inner_area.width,
                 height: remaining_height.min(post_height),
             };
 
