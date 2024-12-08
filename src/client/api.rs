@@ -179,4 +179,40 @@ impl API {
         
         Err(anyhow::anyhow!("Could not find follow record to delete"))
     }
+
+    pub async fn create_post(&self, text: String, reply_to: Option<String>) -> Result<()> {
+        let mut record = atrium_api::app::bsky::feed::post::RecordData {
+            text,
+            created_at: atrium_api::types::string::Datetime::now(),
+            reply: None,
+            embed: None,
+            langs: None,
+            labels: None,
+            tags: None,
+            facets: None,
+            entities: None,
+        };
+
+        // If this is a reply, set up the reply reference
+        if let Some(reply_uri) = reply_to {
+            // First get the post we're replying to
+            let parent_post = self.get_post(&reply_uri).await?;
+            
+            record.reply = Some(atrium_api::app::bsky::feed::post::ReplyRefData {
+                root: atrium_api::com::atproto::repo::strong_ref::MainData {
+                    uri: reply_uri.clone().try_into()?,
+                    cid: parent_post.cid.clone(),
+                }.into(),
+                parent: atrium_api::com::atproto::repo::strong_ref::MainData {
+                    uri: reply_uri.try_into()?,
+                    cid: parent_post.cid.clone(),
+                }.into(),
+            }.into());
+        }
+
+        match self.agent.create_record(record).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(anyhow::anyhow!("Failed to create post: {}", e))
+        }
+    }
 }

@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{components::{images::ImageManager, post_list::PostList}, views::{View, ViewStack}};
+use super::{components::{images::ImageManager, post_composer::PostComposer, post_list::PostList}, views::{View, ViewStack}};
 
 use ratatui::crossterm::{
     event::{self, Event},
@@ -33,6 +33,8 @@ pub struct App {
     // notification_check_interval: Duration,
     // last_notification_check: Instant,
     update_manager: UpdateManager,
+    pub post_composer: Option<PostComposer>,
+    pub composing: bool,
 }
 
 impl App {
@@ -51,6 +53,8 @@ impl App {
             // notification_check_interval: Duration::from_secs(120),
             // last_notification_check: Instant::now(),
             update_manager: UpdateManager::new(),
+            post_composer: None,
+            composing: false,
         }
     }
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
@@ -214,7 +218,71 @@ impl App {
     }
 
     pub async fn handle_input(&mut self, key: KeyEvent) {
+        if self.composing {
+            match (key.code, key.modifiers) {
+                (KeyCode::Esc, _) => {
+                    self.composing = false;
+                    self.post_composer = None;
+                }
+                (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
+                    log::info!("trying to create post");
+                    if let Some(composer) = &self.post_composer {
+                        let content = composer.get_content().to_string();
+                        let reply_to = composer.reply_to.clone();
+                        
+                        match self.api.create_post(content, reply_to).await {
+                            Ok(_) => {
+                                self.status_line = "Post created successfully".to_string();
+                                self.composing = false;
+                                self.post_composer = None;
+                                // Refresh the current view to show the new post
+                                self.refresh_current_view().await.ok();
+                            }
+                            Err(e) => {
+                                self.error = Some(format!("Failed to create post: {}", e));
+                            }
+                        }
+                    }
+                },
+                // (KeyCode::Enter, KeyModifiers::NONE) => {
+                //     log::info!("inserting newline into post");
+                //     if let Some(composer) = &mut self.post_composer {
+                //         composer.insert_char('\n');
+                //     }
+                // }
+                (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                    if let Some(composer) = &mut self.post_composer {
+                        composer.insert_char(c);
+                    }
+                }
+                (KeyCode::Backspace, _) => {
+                    if let Some(composer) = &mut self.post_composer {
+                        composer.delete_char();
+                    }
+                }
+                (KeyCode::Left, _) => {
+                    if let Some(composer) = &mut self.post_composer {
+                        composer.move_cursor_left();
+                    }
+                }
+                (KeyCode::Right, _) => {
+                    if let Some(composer) = &mut self.post_composer {
+                        composer.move_cursor_right();
+                    }
+                }
+                _ => {}
+            }
+        } else {
         match (key.code, key.modifiers) {
+            (KeyCode::Char('p'), KeyModifiers::NONE) => {
+                // Start composing a new post
+                let reply_to = match self.view_stack.current_view() {
+                    View::Thread(thread) => Some(thread.anchor_uri.clone()),
+                    _ => None,
+                };
+                self.post_composer = Some(PostComposer::new(reply_to));
+                self.composing = true;
+            }
             // Regular v
             (KeyCode::Char('v'), KeyModifiers::NONE) => {
                 if let Some(post) = self.view_stack.current_view().get_selected_post() {
@@ -292,6 +360,21 @@ impl App {
                     }
                 }
             },
+            (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                if let Some(session) = self.api.agent.get_session().await {
+                    // Get the logged-in user's DID
+                    let did = &session.did;
+                    let actor = AtIdentifier::Did(did.clone());
+                    
+                    match self.view_stack.push_author_feed_view(actor, &self.api).await {
+                        Ok(_) => {},
+                        Err(e) => {
+                            log::info!("Error pushing logged-in user feed view: {:?}", e);
+                            self.error = Some(format!("Failed to load your profile: {}", e));
+                        }
+                    }
+                }
+            },
             (KeyCode::Char('n'), KeyModifiers::NONE) => {
                 let currently_notifications_view = if let View::Notifications(_view) = self.view_stack.current_view() {
                     true
@@ -323,6 +406,8 @@ impl App {
             _ => {}
         }
     }
+    }
+    
     pub async fn run(mut self) -> Result<()> {
         // Terminal initialization
         enable_raw_mode()?;
