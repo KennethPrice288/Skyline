@@ -1,7 +1,7 @@
 use crate::client::{api::API, update::{UpdateEvent, UpdateManager}};
 use anyhow::Result;
 use atrium_api::{app::bsky::feed::defs::PostView, types::string::AtIdentifier};
-use ratatui::crossterm::{event::KeyCode, terminal::EnterAlternateScreen};
+use ratatui::crossterm::{event::{KeyCode, KeyEvent, KeyModifiers}, terminal::EnterAlternateScreen};
 use secrecy::SecretString;
 use tokio::sync::mpsc;
 use std::{
@@ -213,23 +213,10 @@ impl App {
         }
     }
 
-    pub async fn handle_input(&mut self, key: KeyCode) {
-        match key {
-            KeyCode::Char('j') => {
-                self.view_stack.current_view().scroll_down();
-                // Check if we need to load more content
-                if let View::Timeline(feed) = self.view_stack.current_view() {
-                    if feed.needs_more_content() {
-                        self.loading = true;
-                        feed.scroll(&self.api).await;
-                        self.loading = false;
-                    }
-                }
-            }
-            KeyCode::Char('k') => {
-                self.view_stack.current_view().scroll_up();
-            },
-            KeyCode::Char('v') => {
+    pub async fn handle_input(&mut self, key: KeyEvent) {
+        match (key.code, key.modifiers) {
+            // Regular v
+            (KeyCode::Char('v'), KeyModifiers::NONE) => {
                 if let Some(post) = self.view_stack.current_view().get_selected_post() {
                     let uri = post.uri.to_string();
                     if self.view_stack.current_view().can_view_thread(&uri) {
@@ -239,13 +226,40 @@ impl App {
                     }
                 }
             },
-            KeyCode::Char('l') => {
-               self.handle_like_post().await;
+            (KeyCode::Char('V'), KeyModifiers::SHIFT) => {
+                if let Some(post) = self.view_stack.current_view().get_selected_post() {
+                    if let Some(quoted_post) = super::components::post::Post::extract_quoted_post_data(&post.into()) {
+                        let quoted_uri = quoted_post.uri.to_string();
+                        if self.view_stack.current_view().can_view_thread(&quoted_uri) {
+                            if let Err(e) = self.view_stack.push_thread_view(quoted_uri, &self.api).await {
+                                self.error = Some(format!("Failed to load quoted thread: {}", e));
+                            }
+                        }
+                    }
+                }
             },
-            KeyCode::Char('r') => {
+            // Regular keys without modifiers
+            (KeyCode::Char('j'), KeyModifiers::NONE) => {
+                self.view_stack.current_view().scroll_down();
+                // Check if we need to load more content
+                if let View::Timeline(feed) = self.view_stack.current_view() {
+                    if feed.needs_more_content() {
+                        self.loading = true;
+                        feed.scroll(&self.api).await;
+                        self.loading = false;
+                    }
+                }
+            },
+            (KeyCode::Char('k'), KeyModifiers::NONE) => {
+                self.view_stack.current_view().scroll_up();
+            },
+            (KeyCode::Char('l'), KeyModifiers::NONE) => {
+                self.handle_like_post().await;
+            },
+            (KeyCode::Char('r'), KeyModifiers::NONE) => {
                 self.handle_repost().await;
             },
-            KeyCode::Char('a') => {
+            (KeyCode::Char('a'), KeyModifiers::NONE) => {
                 if let View::Notifications(notifications) = self.view_stack.current_view() {
                     let selected_author_did = &notifications.get_notification().author.did;
                     let actor = AtIdentifier::Did(selected_author_did.clone());
@@ -259,10 +273,8 @@ impl App {
                 } else if let Some(post) = self.view_stack.current_view().get_selected_post() {
                     let selected_author_did = post.author.did.clone();
                     
-                    // Check if we're already viewing this author's feed
                     let is_same_author = match self.view_stack.current_view() {
                         View::AuthorFeed(author_feed) => {
-                            // Get the DID from the current author feed's profile
                             author_feed.profile.profile.did == selected_author_did
                         },
                         _ => false
@@ -280,28 +292,25 @@ impl App {
                     }
                 }
             },
-            KeyCode::Char('n') => {
-                let currently_notifications_view = if let View::Notifications(_view)= self.view_stack.current_view() {
+            (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                let currently_notifications_view = if let View::Notifications(_view) = self.view_stack.current_view() {
                     true
                 } else {
                     false
                 };
-                // Push notifications view and load initial data
                 if !currently_notifications_view {
                     self.view_stack.push_notifications_view();
                     if let View::Notifications(notifications) = self.view_stack.current_view() {
                         self.loading = true;
                         notifications.load_notifications(&mut self.api).await.ok();
                         self.loading = false;
-                        // Mark notifications as seen
-                        // self.api.mark_notifications_seen().await.ok();
                     }
                 }
             },
-            KeyCode::Char('f') => {
+            (KeyCode::Char('f'), KeyModifiers::NONE) => {
                 self.handle_follow().await;
-            }
-            KeyCode::Esc => {
+            },
+            (KeyCode::Esc, KeyModifiers::NONE) => {
                 self.view_stack.pop_view();
                 match self.refresh_current_view().await {
                     Ok(_) => log::info!("Successfully refreshed view"),
@@ -314,7 +323,6 @@ impl App {
             _ => {}
         }
     }
-
     pub async fn run(mut self) -> Result<()> {
         // Terminal initialization
         enable_raw_mode()?;
@@ -377,7 +385,7 @@ impl App {
                         if key.code == KeyCode::Char('q') {
                             return Ok(());
                         }
-                        self.handle_input(key.code).await;
+                        self.handle_input(key).await;
                     }
                     Event::Mouse(_) => {}
                     Event::Resize(_, _) => {}
