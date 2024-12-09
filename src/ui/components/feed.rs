@@ -79,6 +79,64 @@ impl Feed {
                 }
             }
     
+            pub async fn reload_feed(&mut self, api: &mut API) -> Result<()> {
+                // Store the URI of the currently selected post if we have one
+                let current_uri = self.posts
+                    .get(self.base.selected_index)
+                    .map(|post| post.data.uri.clone());
+        
+                if let Some(anchor_uri) = current_uri {
+                    // Clear existing posts but remember our position
+                    let selected_index = self.base.selected_index;
+                    self.posts.clear();
+                    self.rendered_posts.clear();
+                    
+                    // Get the timeline centered around our current post
+                    let params = atrium_api::app::bsky::feed::get_timeline::ParametersData {
+                        algorithm: None,
+                        // We want posts before our current position
+                        cursor: None, // We'll need to implement a way to get the cursor for a specific post
+                        limit: Some(atrium_api::types::LimitedNonZeroU8::MAX),
+                    };
+        
+                    match api.agent.api.app.bsky.feed.get_timeline(params.into()).await {
+                        Ok(response) => {
+                            // Find the index of our anchor post in the new response
+                            let anchor_index = response.feed.iter()
+                                .position(|post| post.post.data.uri == anchor_uri);
+        
+                            if let Some(_index) = anchor_index {
+                                // Add all posts to our feed
+                                for feed_post in response.feed.clone() {
+                                    self.rendered_posts.push(super::post::Post::new(
+                                        feed_post.post.clone(),
+                                        self.image_manager.clone(),
+                                    ));
+                                    self.posts.push_back(feed_post.post.clone());
+                                }
+        
+                                // Restore our selected position
+                                self.base.selected_index = selected_index;
+                                self.cursor = response.cursor.clone();
+        
+                                // Pre-fetch the next page if we're close to the end
+                                if self.needs_more_content() {
+                                    let _ = self.scroll(api).await;
+                                }
+                            } else {
+                                // If we couldn't find our anchor post, fall back to load_initial_posts
+                                self.load_initial_posts(api).await?;
+                            }
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
+                } else {
+                    // If we don't have a current post, just do a fresh load
+                    self.load_initial_posts(api).await?;
+                }
+        
+                Ok(())
+            }
 
 }
 

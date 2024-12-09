@@ -124,7 +124,7 @@ impl App {
         
         match self.view_stack.current_view() {
             View::Timeline(feed) => {
-                feed.load_initial_posts(&mut self.api).await?;
+                feed.reload_feed(&mut self.api).await?;
             }
             View::Thread(thread) => {
                 let params = atrium_api::app::bsky::feed::get_post_thread::Parameters {
