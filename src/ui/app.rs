@@ -601,7 +601,7 @@ impl App {
             if event::poll(timeout)? {
                 match event::read()? {
                     Event::Key(key) => {
-                        if key.code == KeyCode::Char('q') {
+                        if key.code == KeyCode::Char('q') && !self.command_mode && !self.composing {
                             return Ok(());
                         }
                         self.handle_input(key).await;

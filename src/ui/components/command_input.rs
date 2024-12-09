@@ -72,6 +72,8 @@ impl CommandInput {
         commands.insert("notifications");
         commands.insert("timeline");
         commands.insert("profile");
+        commands.insert("like");
+        commands.insert("repost");
         // commands.insert("help");
         // commands.insert("search");
         // commands.insert("block");
