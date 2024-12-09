@@ -109,6 +109,31 @@ impl View {
             _ => true
         }
     }
+
+    pub fn remove_post(&mut self, uri: &str) {
+        match self {
+            View::Timeline(feed) => {
+                if let Some(index) = feed.posts.iter().position(|p| p.data.uri == uri) {
+                    feed.posts.remove(index);
+                    feed.rendered_posts.remove(index);
+                }
+            }
+            View::Thread(thread) => {
+                if let Some(index) = thread.posts.iter().position(|p| p.uri == uri) {
+                    thread.posts.remove(index);
+                    thread.rendered_posts.remove(index);
+                    thread.update_relationships();
+                }
+            }
+            View::AuthorFeed(author_feed) => {
+                if let Some(index) = author_feed.posts.iter().position(|p| p.data.uri == uri) {
+                    author_feed.posts.remove(index);
+                    author_feed.rendered_posts.remove(index);
+                }
+            }
+            View::Notifications(_) => {},
+        }
+    }
 }
 
 pub struct ViewStack {

@@ -82,7 +82,7 @@ impl Thread {
         thread
     }
 
-    fn update_relationships(&mut self) {
+    pub fn update_relationships(&mut self) {
         let mut relationships = ThreadRelationships::new();
         
         // First pass: build parent relationships and mark anchor post
@@ -129,7 +129,7 @@ impl Thread {
         self.posts.iter().find(|p| p.uri == uri)
     }
 
-    fn process_thread_data(&mut self, thread_data: OutputThreadRefs) -> Result<()> {
+    pub fn process_thread_data(&mut self, thread_data: OutputThreadRefs) -> Result<()> {
         match thread_data {
             OutputThreadRefs::AppBskyFeedDefsThreadViewPost(post) => {
                 self.anchor_uri = post.post.uri.to_string();

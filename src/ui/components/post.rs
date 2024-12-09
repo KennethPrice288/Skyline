@@ -196,13 +196,13 @@ impl Post {
         let author = &post.author;
         let author_handle = author.handle.to_string();
         let author_display_name = author.display_name.clone().unwrap_or(author_handle.clone());
-
+    
         let time_posted = &post.indexed_at;
         let fixed_offset: &chrono::DateTime<FixedOffset> = time_posted.as_ref();
         let local_time: chrono::DateTime<Local> = fixed_offset.with_timezone(&Local);
-
+    
         let formatted_time = local_time.format("%Y-%m-%d %-I:%M %p").to_string();
-
+    
         let mut spans = vec![
             Span::styled(
                 author_display_name,
@@ -222,6 +222,7 @@ impl Post {
             ]);
         }
     
+        // Add timestamp
         spans.extend_from_slice(&[
             Span::styled(
                 " · ",
@@ -229,17 +230,25 @@ impl Post {
             ),
             Span::raw(formatted_time),
         ]);
-
+    
+        // Add following status if viewer data is available
+        let following_status = match &post.author.viewer {
+            Some(viewer) => {
+                if viewer.data.following.is_some() {
+                    "Following"
+                } else {
+                    "Not Following"
+                }
+            },
+            None => "Not Following"
+        };
+    
         spans.extend_from_slice(&[
             Span::styled(
                 " · ",
                 Style::default().fg(Color::DarkGray),
             ),
-            if let Some(_) = post.author.viewer.clone().unwrap().data.following {
-                Span::raw("Following")
-            } else {
-                Span::raw("Not Following")
-            }
+            Span::raw(following_status),
         ]);
     
         Paragraph::new(Line::from(spans)).wrap(ratatui::widgets::Wrap { trim: true })
@@ -318,77 +327,39 @@ impl Post {
             return;
         }
         if let Some(quoted_post_data) = &self.quoted_post_data {
-            let quoted_text = Self::get_post_text(quoted_post_data);
-            let header = Self::get_header(quoted_post_data);
-            let content = ratatui::widgets::Paragraph::new(quoted_text)
-                .wrap(ratatui::widgets::Wrap { trim: false });
-            let stats = Self::get_stats(quoted_post_data);
+            // Create a block for the quoted post
             let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::White));
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::White));
 
-
-        let inner_area = block.inner(area);
-
-        let images = Post::extract_images_from_post(&self.post);
-
-        if inner_area.height > 0 {
-            let avatar_width = 3; // Space for small avatar
+            let inner_area = block.inner(area);
             
-            // Split horizontally first to create avatar column
-            let horizontal_split = Layout::default()
-                .direction(Direction::Horizontal)
+            // Create a vertical layout for the quoted post content
+            let layout = Layout::default()
+                .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(avatar_width),
-                    Constraint::Min(20),
+                    Constraint::Length(1),  // Header
+                    Constraint::Min(1),     // Content
+                    Constraint::Length(1),  // Stats
                 ])
                 .split(inner_area);
 
-            // Avatar area
-            if let Some(avatar) = &self.avatar {
-                let avatar_area = Rect {
-                    x: horizontal_split[0].x,
-                    y: horizontal_split[0].y,
-                    width: avatar_width,
-                    height: 3, // Small square avatar
-                };
-                avatar.render(avatar_area, buf);
-            }
+            // Render the containing block
+            block.render(area, buf);
 
-            // Content area
-            let content_constraints = if images.is_some() {
-                    vec![
-                        Constraint::Length(1),  // Header
-                        Constraint::Min(1),     // Content
-                        Constraint::Length(15), // Images
-                        Constraint::Length(1),  // Stats
-                    ]
-                } else {
-                    vec![
-                        Constraint::Length(1), // Header
-                        Constraint::Min(1),    // Content
-                        Constraint::Length(1), // Stats
-                    ]
-                };
+            // Render header
+            let header = Self::get_header(quoted_post_data);
+            header.render(layout[0], buf);
 
-                let content_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints(content_constraints)
-                    .split(horizontal_split[1]);
+            // Render content
+            let quoted_text = Self::get_post_text(quoted_post_data);
+            let content = Paragraph::new(quoted_text)
+                .wrap(ratatui::widgets::Wrap { trim: true });
+            content.render(layout[1], buf);
 
-                if images.is_some() && !images.as_ref().unwrap().is_empty() {
-                    let image_area = content_chunks[2];
-                    if let Some(first_image_data) = images.unwrap().get(0) {
-                        let mut first_image = PostImage::new(first_image_data.clone(), self.image_manager.clone());
-                        first_image.render(image_area, buf);
-                    }
-                }
-
-                block.render(area, buf);
-                header.render(content_chunks[0], buf);
-                content.render(content_chunks[1], buf);
-                stats.render(content_chunks[content_chunks.len() - 1], buf);
-            }
+            // Render stats
+            let stats = Self::get_stats(quoted_post_data);
+            Paragraph::new(stats).render(layout[2], buf);
         }
     }
 
@@ -469,7 +440,7 @@ impl StatefulWidget for &mut Post {
 
             // Add quoted post before images if it exists
             if self.quoted_post_data.is_some() {
-                content_constraints.push(Constraint::Min(3)); // Quote
+                content_constraints.push(Constraint::Length(10)); // Quote
             }
 
             // Add images if they exist

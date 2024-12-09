@@ -120,47 +120,57 @@ impl App {
     }
     
     pub async fn refresh_current_view(&mut self) -> Result<()> {
-        let uris = self.view_stack.current_view().get_all_post_uris();
-        log::info!("Refreshing view with {} total URIs", uris.len());
+        self.loading = true;
         
-        // Create a vector to hold our futures
-        let mut fetch_futures = Vec::new();
-        
-        // Create futures for each chunk
-        for chunk in uris.chunks(25) {
-            let chunk_vec = chunk.to_vec();
-            let api = &self.api;
-            
-            // Create future for this chunk
-            let future = async move {
-                let params = atrium_api::app::bsky::feed::get_posts::ParametersData {
-                    uris: chunk_vec,
-                }.into();
-                api.agent.api.app.bsky.feed.get_posts(params).await
-            };
-            
-            fetch_futures.push(future);
-        }
-        
-        // Execute all futures concurrently
-        let results = futures::future::join_all(fetch_futures).await;
-        
-        // Process results
-        for result in results {
-            match result {
-                Ok(response) => {
-                    log::info!("Received {} posts from chunk", response.data.posts.len());
-                    for post in response.data.posts {
-                        self.view_stack.current_view().update_post(post);
+        match self.view_stack.current_view() {
+            View::Timeline(feed) => {
+                feed.load_initial_posts(&mut self.api).await?;
+            }
+            View::Thread(thread) => {
+                let params = atrium_api::app::bsky::feed::get_post_thread::Parameters {
+                    data: atrium_api::app::bsky::feed::get_post_thread::ParametersData {
+                        uri: thread.anchor_uri.clone().into(),
+                        depth: Some(atrium_api::types::LimitedU16::MAX),
+                        parent_height: Some(atrium_api::types::LimitedU16::MAX),
+                    },
+                    extra_data: ipld_core::ipld::Ipld::Null,
+                };
+                
+                if let Ok(response) = self.api.agent.api.app.bsky.feed.get_post_thread(params).await {
+                    if let atrium_api::types::Union::Refs(thread_refs) = response.data.thread {
+                        thread.posts.clear();
+                        thread.rendered_posts.clear();
+                        let _ = thread.process_thread_data(thread_refs);
                     }
                 }
-                Err(e) => {
-                    log::error!("Chunk error: {:?}", e);
-                    return Err(e.into());
+            }
+            View::AuthorFeed(author_feed) => {
+                let actor = AtIdentifier::Did(author_feed.profile.profile.did.clone());
+                let params = atrium_api::app::bsky::feed::get_author_feed::Parameters {
+                    data: atrium_api::app::bsky::feed::get_author_feed::ParametersData {
+                        actor: actor.clone(),
+                        cursor: None,
+                        filter: None,
+                        include_pins: None,
+                        limit: None,
+                    },
+                    extra_data: ipld_core::ipld::Ipld::Null,
+                };
+    
+                if let Ok(response) = self.api.agent.api.app.bsky.feed.get_author_feed(params).await {
+                    author_feed.posts.clear();
+                    author_feed.rendered_posts.clear();
+                    for post in &response.feed {
+                        author_feed.add_post(post.post.data.clone());
+                    }
                 }
             }
+            View::Notifications(notifications) => {
+                notifications.load_notifications(&mut self.api).await?;
+            }
         }
-        
+    
+        self.loading = false;
         Ok(())
     }
 
@@ -233,12 +243,19 @@ impl App {
                         let reply_to = composer.reply_to.clone();
                         
                         match self.api.create_post(content, reply_to).await {
-                            Ok(_) => {
+                            Ok(()) => {
                                 self.status_line = "Post created successfully".to_string();
                                 self.composing = false;
                                 self.post_composer = None;
-                                // Refresh the current view to show the new post
-                                self.refresh_current_view().await.ok();
+                
+                                // For Timeline view, load new posts to show the just-created post
+                                if let View::Timeline(feed) = self.view_stack.current_view() {
+                                    feed.load_initial_posts(&mut self.api).await.ok();
+                                } else if let View::Thread(thread) = self.view_stack.current_view() {
+                                    // If we're in a thread, refresh to show the new reply
+                                    let anchor_uri = thread.anchor_uri.clone();
+                                    self.view_stack.push_thread_view(anchor_uri, &self.api).await.ok();
+                                }
                             }
                             Err(e) => {
                                 self.error = Some(format!("Failed to create post: {}", e));
@@ -246,12 +263,6 @@ impl App {
                         }
                     }
                 },
-                // (KeyCode::Enter, KeyModifiers::NONE) => {
-                //     log::info!("inserting newline into post");
-                //     if let Some(composer) = &mut self.post_composer {
-                //         composer.insert_char('\n');
-                //     }
-                // }
                 (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                     if let Some(composer) = &mut self.post_composer {
                         composer.insert_char(c);
@@ -388,10 +399,13 @@ impl App {
                     // Only allow deletion if the post author's DID matches the current user's DID
                     if let Some(session) = self.api.agent.get_session().await {
                         if post.author.did == session.did {
-                            match self.api.delete_post(&post.uri).await {
+                            let uri = post.uri.clone();
+                            match self.api.delete_post(&uri).await {
                                 Ok(_) => {
                                     self.status_line = "Post deleted successfully".to_string();
-                                    // Refresh the current view to reflect the deletion
+                                    // Remove post from view immediately
+                                    self.view_stack.current_view().remove_post(&uri);
+                                    // Then refresh the view to ensure everything is in sync
                                     self.refresh_current_view().await.ok();
                                 }
                                 Err(e) => {
@@ -402,7 +416,6 @@ impl App {
                             self.status_line = "You can only delete your own posts".to_string();
                         }
                     }
-                    let _ = self.refresh_current_view().await;
                 }
             },
             (KeyCode::Char('n'), KeyModifiers::NONE) => {

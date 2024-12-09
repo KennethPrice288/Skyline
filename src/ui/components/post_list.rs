@@ -44,7 +44,7 @@ impl PostListBase {
         height += 1;  // Header line
         height += 1;  // Stats line
         
-        // Calculate content height based on available width
+        // Calculate main content height based on available width
         if let Some(text) = Self::get_post_text(post) {
             // Account for borders and padding (2 chars on each side)
             let usable_width = available_width.saturating_sub(4);
@@ -56,21 +56,50 @@ impl PostListBase {
                 1
             };
             
-            // Using textwrap for accurate line counting
             let wrapped_lines = textwrap::fill(&text, chars_per_line)
                 .lines()
                 .count();
             
             height += wrapped_lines as u16;
         }
+
+        // Handle quoted posts if present
+        if let Some(quoted_post) = super::post::Post::extract_quoted_post_data(post) {
+            // Add borders for quote block
+            height += 2;  // Top and bottom borders of quote
+
+            // Add quoted post header
+            height += 1;
+
+            // Calculate quoted text height
+            if let Some(quoted_text) = Self::get_post_text(&quoted_post.clone().into()) {
+                // Reduce width for quote indentation (4 chars for borders and indent)
+                let quote_width = available_width.saturating_sub(6);
+                let chars_per_line = if quote_width > 0 {
+                    quote_width as usize
+                } else {
+                    1
+                };
+
+                let wrapped_lines = textwrap::fill(&quoted_text, chars_per_line)
+                    .lines()
+                    .count();
+                
+                height += wrapped_lines as u16;
+            }
+
+            // Add height for quoted post stats
+            height += 1;
+
+            // If quoted post has images, add image height
+            if super::post::Post::extract_images_from_post(&quoted_post.into()).is_some() {
+                height += 15;  // Fixed height for image area
+            }
+        }
         
-        // Image section if present
+        // Add height for main post images if present
         if super::post::Post::extract_images_from_post(post).is_some() {
             height += 15;  // Fixed height for image area
-        }
-
-        if super::post::Post::extract_quoted_post_data(post).is_some() {
-            height += 15; // Fixed height for quote for now
         }
         
         height

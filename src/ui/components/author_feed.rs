@@ -35,7 +35,7 @@ impl AuthorFeed {
         }
     }
 
-    fn add_post(&mut self, post: PostViewData) {
+    pub fn add_post(&mut self, post: PostViewData) {
         self.rendered_posts.push(Post::new(post.clone().into(), self.image_manager.clone()));
         self.posts.push_back(post.into());
     }
