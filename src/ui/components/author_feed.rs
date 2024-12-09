@@ -1,7 +1,7 @@
 use std::{collections::{HashMap, VecDeque}, sync::Arc};
 use atrium_api::{app::bsky::feed::defs::{PostView, PostViewData}, types::Object};
 use ratatui::{buffer::Buffer, layout::Rect, widgets::{StatefulWidget, Widget}};
-use super::{author_profile::AuthorProfile, images::ImageManager, post::Post, post_list::{PostList, PostListBase}};
+use super::{author_profile::AuthorProfile, images::ImageManager, post::{types::{PostContext, PostState}, Post}, post_list::{PostList, PostListBase}};
 
 pub struct AuthorFeed {
     pub profile: AuthorProfile,
@@ -9,7 +9,7 @@ pub struct AuthorFeed {
     pub rendered_posts: Vec<Post>,
     pub post_heights: HashMap<String, u16>,
     pub base: PostListBase,
-    image_manager: Arc<ImageManager>,
+    pub image_manager: Arc<ImageManager>,
 }
 
 impl AuthorFeed {
@@ -36,7 +36,12 @@ impl AuthorFeed {
     }
 
     pub fn add_post(&mut self, post: PostViewData) {
-        self.rendered_posts.push(Post::new(post.clone().into(), self.image_manager.clone()));
+        self.rendered_posts.push(Post::new(
+            post.clone().into(),
+            PostContext {
+                image_manager: self.image_manager.clone(),
+                indent_level: 0,
+            }));
         self.posts.push_back(post.into());
     }
 
@@ -208,7 +213,7 @@ impl Widget for &mut AuthorFeed {
             .enumerate()
             .skip(self.base.scroll_offset)
         {
-            let post_height = self.post_heights.get(&post.get_uri()).copied().unwrap_or(6);
+            let post_height = self.post_heights.get(post.get_uri()).copied().unwrap_or(6);
 
             let remaining_height = area.height.saturating_sub(current_y);
             if remaining_height == 0 {
@@ -225,7 +230,7 @@ impl Widget for &mut AuthorFeed {
             post.render(
                 post_area,
                 buf,
-                &mut super::post::PostState {
+                &mut PostState {
                     selected: self.base.selected_index == i,
                 },
             );

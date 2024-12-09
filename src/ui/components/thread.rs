@@ -10,7 +10,7 @@ use ratatui::{
 
 use super::{
     images::ImageManager,
-    post::Post,
+    post::{types::{PostContext, PostState}, Post},
     post_list::{PostList, PostListBase}
 };
 
@@ -32,7 +32,7 @@ impl ThreadRelationships {
         }
     }
 
-    fn get_indent_level(&self, uri: &str) -> u16 {
+    pub fn get_indent_level(&self, uri: &str) -> u16 {
         self.indent_levels.get(uri).copied().unwrap_or(0)
     }
 
@@ -55,9 +55,9 @@ pub struct Thread {
     pub post_heights: HashMap<String, u16>,
     pub status_line: Option<String>,
     pub anchor_uri: String,  // URI of the focused post
-    image_manager: Arc<ImageManager>,
+    pub cached_relationships: Option<ThreadRelationships>,
+    pub image_manager: Arc<ImageManager>,
     base: PostListBase,
-    cached_relationships: Option<ThreadRelationships>,
 }
 
 
@@ -230,7 +230,20 @@ impl Thread {
     
     fn add_post(&mut self, post: PostViewData) {
         let uri = post.uri.to_string();
-        self.rendered_posts.push(Post::new(post.clone().into(), self.image_manager.clone()));
+        
+        // Get indent level from relationships
+        let indent_level = self.cached_relationships
+            .as_ref()
+            .map(|rels| rels.get_indent_level(&uri))
+            .unwrap_or(0);
+    
+        // Create context with proper indentation
+        let context = PostContext {
+            image_manager: self.image_manager.clone(),
+            indent_level,
+        };
+    
+        self.rendered_posts.push(Post::new(post.clone().into(), context));
         self.posts.push_back(post);
         
         if uri == self.anchor_uri {
@@ -333,7 +346,7 @@ impl Widget for &mut Thread {
             .filter(|(_, post)| relationships.is_visible(&post.get_uri()))
         {
             let post_height = self.post_heights
-                .get(&post.get_uri())
+                .get(post.get_uri())
                 .copied()
                 .unwrap_or(6);
             
@@ -355,7 +368,7 @@ impl Widget for &mut Thread {
             post.render(
                 post_area,
                 buf,
-                &mut super::post::PostState {
+                &mut PostState {
                     selected: i == self.base.selected_index,
                 },
             );

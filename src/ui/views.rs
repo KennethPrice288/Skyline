@@ -7,6 +7,8 @@ use atrium_api::types::LimitedU16;
 
 use crate::client::api::API;
 use crate::ui::components::author_profile::AuthorProfile;
+use crate::ui::components::post::types::PostContext;
+use crate::ui::components::post::Post;
 use crate::ui::components::{feed::Feed, images::ImageManager, thread::Thread};
 
 use super::components::author_feed::AuthorFeed;
@@ -28,8 +30,15 @@ impl View {
                 if let Some(index) = feed.posts.iter().position(|p| p.data.uri == uri) {
                     log::info!("Updating timeline post at index {}", index);
                     feed.posts[index] = updated_post.clone();
+                    // Recreate the rendered post with existing context
                     if let Some(rendered) = feed.rendered_posts.get_mut(index) {
-                        rendered.post = updated_post;
+                        feed.rendered_posts[index] = Post::new(
+                            updated_post,
+                            PostContext {
+                                image_manager: feed.image_manager.clone(),
+                                indent_level: 0,  // Timeline posts have no indent
+                            }
+                        );
                     }
                 }
             }
@@ -37,18 +46,32 @@ impl View {
                 if let Some(index) = thread.posts.iter().position(|p| p.uri == uri) {
                     log::info!("Updating thread post at index {}", index);
                     thread.posts[index] = updated_post.data.clone();
-                    if let Some(rendered) = thread.rendered_posts.get_mut(index) {
-                        rendered.post = updated_post;
-                    }
+                    // Get indent level from relationships
+                    let indent_level = thread.cached_relationships
+                        .as_ref()
+                        .map(|rels| rels.get_indent_level(&uri))
+                        .unwrap_or(0);
+                    
+                    thread.rendered_posts[index] = Post::new(
+                        updated_post,
+                        PostContext {
+                            image_manager: thread.image_manager.clone(),
+                            indent_level,
+                        }
+                    );
                 }
             }
             View::AuthorFeed(author_feed) => {
                 if let Some(index) = author_feed.posts.iter().position(|p| p.data.uri == uri) {
                     log::info!("Updating author_feed post at index {}", index);
                     author_feed.posts[index] = updated_post.clone();
-                    if let Some(rendered) = author_feed.rendered_posts.get_mut(index) {
-                        rendered.post = updated_post;
-                    }
+                    author_feed.rendered_posts[index] = Post::new(
+                        updated_post,
+                        PostContext {
+                            image_manager: author_feed.image_manager.clone(),
+                            indent_level: 0,  // Author feed posts have no indent
+                        }
+                    );
                 }
             },
             View::Notifications(_notification_view) => {},

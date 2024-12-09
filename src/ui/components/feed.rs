@@ -4,9 +4,9 @@ use std::{collections::{HashMap, VecDeque}, sync::Arc};
 use atrium_api::app::bsky::feed::defs::{PostView, PostViewData};
 use ratatui::{buffer::Buffer, layout::Rect, widgets::{Block, Borders, StatefulWidget, Widget}};
 
-use crate::client::api::API;
+use crate::{client::api::API, ui};
 use anyhow::Result;
-use super::{images::ImageManager, post_list::{PostList, PostListBase}};
+use super::{images::ImageManager, post::types::PostContext, post_list::{PostList, PostListBase}};
 
 pub struct Feed {
     pub posts: VecDeque<PostView>,
@@ -14,7 +14,7 @@ pub struct Feed {
     pub cursor: Option<String>,
     pub post_heights: HashMap<String, u16>,
     pub status_line: Option<String>,
-    image_manager: Arc<ImageManager>,
+    pub image_manager: Arc<ImageManager>,
     base: PostListBase,
 }
 
@@ -48,7 +48,10 @@ impl Feed {
                 for feed_post in posts {
                     self.rendered_posts.push(super::post::Post::new(
                         feed_post.post.clone(),
-                        self.image_manager.clone(),
+                        PostContext {
+                            image_manager: self.image_manager.clone(),
+                            indent_level: 0,
+                        }
                     ));
                     // Extract the PostView from FeedViewPost
                     self.posts.push_back(feed_post.post.clone());
@@ -67,7 +70,10 @@ impl Feed {
                         for feed_post in feed_posts {
                             self.rendered_posts.push(super::post::Post::new(
                                 feed_post.post.clone(),
-                                self.image_manager.clone(),
+                                PostContext {
+                                    image_manager: self.image_manager.clone(),
+                                    indent_level: 0,
+                                },
                             ));
                             self.posts.push_back(feed_post.post.clone());
                         }
@@ -110,7 +116,10 @@ impl Feed {
                                 for feed_post in response.feed.clone() {
                                     self.rendered_posts.push(super::post::Post::new(
                                         feed_post.post.clone(),
-                                        self.image_manager.clone(),
+                                        PostContext {
+                                            image_manager: self.image_manager.clone(),
+                                            indent_level: 0,
+                                        },
                                     ));
                                     self.posts.push_back(feed_post.post.clone());
                                 }
@@ -230,7 +239,7 @@ impl Widget for &mut Feed {
             .enumerate()
             .skip(self.base.scroll_offset)
         {
-            let post_height = self.post_heights.get(&post.get_uri()).copied().unwrap_or(6);
+            let post_height = self.post_heights.get(post.get_uri()).copied().unwrap_or(6);
 
             let remaining_height = inner_area.height.saturating_sub(current_y);
             if remaining_height == 0 {
@@ -250,7 +259,7 @@ impl Widget for &mut Feed {
             post.render(
                 post_area,
                 buf,
-                &mut super::post::PostState {
+                &mut ui::components::post::types::PostState {
                     selected: self.base.selected_index == i,
                 },
             );

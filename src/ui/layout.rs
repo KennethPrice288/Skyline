@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
 };
 
-use super::{components::{command_input::CommandInputState, post_composer::PostComposerState}, views::View};
+use super::{components::{command_input::CommandInputState, post::types::PostState, post_composer::PostComposerState}, views::View};
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     if !app.authenticated {
@@ -85,7 +85,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 .find(|p| p.uri == thread.anchor_uri) 
             {
                 let rendered_post = thread.rendered_posts.iter_mut()
-                    .find(|p| p.get_uri() == thread.anchor_uri)
+                    .find(|p| *p.get_uri() == thread.anchor_uri)
                     .unwrap();
                 
                 let post_area = Rect {
@@ -98,7 +98,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 rendered_post.render(
                     post_area,
                     f.buffer_mut(),
-                    &mut super::components::post::PostState {
+                    &mut PostState {
                         selected: false,
                     },
                 );
