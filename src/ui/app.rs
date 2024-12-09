@@ -1,6 +1,6 @@
 use crate::client::{api::API, update::{UpdateEvent, UpdateManager}};
 use anyhow::Result;
-use atrium_api::{app::bsky::feed::defs::PostView, types::string::AtIdentifier};
+use atrium_api::{app::bsky::feed::defs::PostView, types::string::{AtIdentifier, Handle}};
 use ratatui::crossterm::{event::{KeyCode, KeyEvent, KeyModifiers}, terminal::EnterAlternateScreen};
 use secrecy::SecretString;
 use tokio::sync::mpsc;
@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{components::{images::ImageManager, post_composer::PostComposer, post_list::PostList}, views::{View, ViewStack}};
+use super::{components::{command_input::CommandInput, images::ImageManager, post_composer::PostComposer, post_list::PostList}, views::{View, ViewStack}};
 
 use ratatui::crossterm::{
     event::{self, Event},
@@ -35,6 +35,8 @@ pub struct App {
     update_manager: UpdateManager,
     pub post_composer: Option<PostComposer>,
     pub composing: bool,
+    pub command_input: CommandInput,
+    pub command_mode: bool,
 }
 
 impl App {
@@ -55,6 +57,8 @@ impl App {
             update_manager: UpdateManager::new(),
             post_composer: None,
             composing: false,
+            command_input: CommandInput::new(),
+            command_mode: false,
         }
     }
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
@@ -117,6 +121,10 @@ impl App {
         } else {
             log::info!("couldnt get selected post for repost");
         }
+    }
+
+    async fn handle_get_profile(&mut self, handle: AtIdentifier) {
+        let _ = self.view_stack.push_author_feed_view(handle, &self.api).await;
     }
     
     pub async fn refresh_current_view(&mut self) -> Result<()> {
@@ -228,16 +236,46 @@ impl App {
             }
         }
     }
+    
 
     pub async fn handle_input(&mut self, key: KeyEvent) {
-        if self.composing {
-            match (key.code, key.modifiers) {
+        match (self.command_mode, self.composing) {
+            (true, _) => match (key.code, key.modifiers) {
+                (KeyCode::Esc, _) => {
+                    self.command_mode = false;
+                    self.command_input.clear();
+                },
+                (KeyCode::Enter, _) => {
+                    if let Some(command) = self.command_input.submit_command() {
+                        self.command_mode = false;
+                        if let Err(e) = self.handle_command(&command.to_lowercase()).await {
+                            self.error = Some(format!("Command error: {}", e));
+                        }
+                    }
+                },
+                (KeyCode::Tab, _) => {
+                    self.command_input.handle_tab();
+                },
+                (KeyCode::Char(c), mods) => {
+                    if mods == KeyModifiers::NONE || mods == KeyModifiers::SHIFT {
+                        self.command_input.insert_char(c);
+                    }
+                },
+                (KeyCode::Backspace, _) => self.command_input.delete_char(),
+                (KeyCode::Left, _) => self.command_input.move_cursor_left(),
+                (KeyCode::Right, _) => self.command_input.move_cursor_right(),
+                (KeyCode::Up, _) => self.command_input.history_up(),
+                (KeyCode::Down, _) => self.command_input.history_down(),
+                _ => {}
+            },
+    
+            // Then compose mode
+            (false, true) => match (key.code, key.modifiers) {
                 (KeyCode::Esc, _) => {
                     self.composing = false;
                     self.post_composer = None;
-                }
+                },
                 (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
-                    log::info!("trying to create post");
                     if let Some(composer) = &self.post_composer {
                         let content = composer.get_content().to_string();
                         let reply_to = composer.reply_to.clone();
@@ -247,128 +285,110 @@ impl App {
                                 self.status_line = "Post created successfully".to_string();
                                 self.composing = false;
                                 self.post_composer = None;
-                
-                                // For Timeline view, load new posts to show the just-created post
-                                if let View::Timeline(feed) = self.view_stack.current_view() {
-                                    feed.load_initial_posts(&mut self.api).await.ok();
-                                } else if let View::Thread(thread) = self.view_stack.current_view() {
-                                    // If we're in a thread, refresh to show the new reply
-                                    let anchor_uri = thread.anchor_uri.clone();
-                                    self.view_stack.push_thread_view(anchor_uri, &self.api).await.ok();
+                                
+                                // Refresh view based on context
+                                match self.view_stack.current_view() {
+                                    View::Timeline(feed) => {
+                                        feed.load_initial_posts(&mut self.api).await.ok();
+                                    },
+                                    View::Thread(thread) => {
+                                        let anchor_uri = thread.anchor_uri.clone();
+                                        self.view_stack.push_thread_view(anchor_uri, &self.api).await.ok();
+                                    },
+                                    _ => {}
                                 }
-                            }
+                            },
                             Err(e) => {
                                 self.error = Some(format!("Failed to create post: {}", e));
                             }
                         }
                     }
                 },
-                (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                    if let Some(composer) = &mut self.post_composer {
-                        composer.insert_char(c);
+                (KeyCode::Char(c), mods) => {
+                    if mods == KeyModifiers::NONE || mods == KeyModifiers::SHIFT {
+                        if let Some(composer) = &mut self.post_composer {
+                            composer.insert_char(c);
+                        }
                     }
-                }
+                },
                 (KeyCode::Backspace, _) => {
                     if let Some(composer) = &mut self.post_composer {
                         composer.delete_char();
                     }
-                }
+                },
                 (KeyCode::Left, _) => {
                     if let Some(composer) = &mut self.post_composer {
                         composer.move_cursor_left();
                     }
-                }
+                },
                 (KeyCode::Right, _) => {
                     if let Some(composer) = &mut self.post_composer {
                         composer.move_cursor_right();
                     }
-                }
+                },
                 _ => {}
-            }
-        } else {
-        match (key.code, key.modifiers) {
-            (KeyCode::Char('p'), KeyModifiers::NONE) => {
-                // Start composing a new post
-                let reply_to = match self.view_stack.current_view() {
-                    View::Thread(thread) => Some(thread.anchor_uri.clone()),
-                    _ => None,
-                };
-                self.post_composer = Some(PostComposer::new(reply_to));
-                self.composing = true;
-            }
-            // Regular v
-            (KeyCode::Char('v'), KeyModifiers::NONE) => {
-                if let Some(post) = self.view_stack.current_view().get_selected_post() {
-                    let uri = post.uri.to_string();
-                    if self.view_stack.current_view().can_view_thread(&uri) {
-                        if let Err(e) = self.view_stack.push_thread_view(uri, &self.api).await {
-                            self.error = Some(format!("Failed to load thread: {}", e));
+            },
+    
+            // Finally visual mode
+            (false, false) => match (key.code, key.modifiers) {
+                // Enter command mode
+                (KeyCode::Char(':'), KeyModifiers::NONE) => {
+                    self.command_mode = true;
+                },
+                
+                (KeyCode::Char('j'), KeyModifiers::NONE) => {
+                    self.view_stack.current_view().scroll_down();
+                    if let View::Timeline(feed) = self.view_stack.current_view() {
+                        if feed.needs_more_content() {
+                            self.loading = true;
+                            feed.scroll(&self.api).await;
+                            self.loading = false;
                         }
                     }
-                }
-            },
-            (KeyCode::Char('V'), KeyModifiers::SHIFT) => {
-                if let Some(post) = self.view_stack.current_view().get_selected_post() {
-                    if let Some(quoted_post) = super::components::post::Post::extract_quoted_post_data(&post.into()) {
-                        let quoted_uri = quoted_post.uri.to_string();
-                        if self.view_stack.current_view().can_view_thread(&quoted_uri) {
-                            if let Err(e) = self.view_stack.push_thread_view(quoted_uri, &self.api).await {
-                                self.error = Some(format!("Failed to load quoted thread: {}", e));
+                },
+                (KeyCode::Char('k'), KeyModifiers::NONE) => self.view_stack.current_view().scroll_up(),
+                (KeyCode::Char('l'), KeyModifiers::NONE) => self.handle_like_post().await,
+                (KeyCode::Char('r'), KeyModifiers::NONE) => self.handle_repost().await,
+                (KeyCode::Char('f'), KeyModifiers::NONE) => self.handle_follow().await,
+                (KeyCode::Char('v'), KeyModifiers::NONE) => {
+                    if let Some(post) = self.view_stack.current_view().get_selected_post() {
+                        let uri = post.uri.to_string();
+                        if self.view_stack.current_view().can_view_thread(&uri) {
+                            if let Err(e) = self.view_stack.push_thread_view(uri, &self.api).await {
+                                self.error = Some(format!("Failed to load thread: {}", e));
                             }
                         }
                     }
-                }
-            },
-            // Regular keys without modifiers
-            (KeyCode::Char('j'), KeyModifiers::NONE) => {
-                self.view_stack.current_view().scroll_down();
-                // Check if we need to load more content
-                if let View::Timeline(feed) = self.view_stack.current_view() {
-                    if feed.needs_more_content() {
-                        self.loading = true;
-                        feed.scroll(&self.api).await;
-                        self.loading = false;
-                    }
-                }
-            },
-            (KeyCode::Char('k'), KeyModifiers::NONE) => {
-                self.view_stack.current_view().scroll_up();
-            },
-            (KeyCode::Char('l'), KeyModifiers::NONE) => {
-                self.handle_like_post().await;
-            },
-            (KeyCode::Char('r'), KeyModifiers::NONE) => {
-                self.handle_repost().await;
-            },
-            (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
-                match self.refresh_current_view().await {
-                    Ok(_) => log::info!("Refreshed current view"),
-                    Err(_) => log::warn!("Failed to refresh current view"),
-                }
-            }
-            (KeyCode::Char('a'), KeyModifiers::NONE) => {
-                if let View::Notifications(notifications) = self.view_stack.current_view() {
-                    let selected_author_did = &notifications.get_notification().author.did;
-                    let actor = AtIdentifier::Did(selected_author_did.clone());
-                    match self.view_stack.push_author_feed_view(actor, &self.api).await {
-                        Ok(_) => {},
-                        Err(e) => {
-                            log::info!("Error pushing author feed view: {:?}", e);
-                            self.error = Some(format!("Failed to load author feed: {}", e));
+                },
+                (KeyCode::Char('V'), KeyModifiers::SHIFT) => {
+                    if let Some(post) = self.view_stack.current_view().get_selected_post() {
+                        if let Some(quoted_post) = super::components::post::Post::extract_quoted_post_data(&post.into()) {
+                            let quoted_uri = quoted_post.uri.to_string();
+                            if self.view_stack.current_view().can_view_thread(&quoted_uri) {
+                                if let Err(e) = self.view_stack.push_thread_view(quoted_uri, &self.api).await {
+                                    self.error = Some(format!("Failed to load quoted thread: {}", e));
+                                }
+                            }
                         }
                     }
-                } else if let Some(post) = self.view_stack.current_view().get_selected_post() {
-                    let selected_author_did = post.author.did.clone();
-                    
-                    let is_same_author = match self.view_stack.current_view() {
-                        View::AuthorFeed(author_feed) => {
-                            author_feed.profile.profile.did == selected_author_did
-                        },
-                        _ => false
+                },
+                (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                    let currently_notifs_view = if let View::Notifications(_) = self.view_stack.current_view() {
+                        true
+                    } else {
+                        false
                     };
-            
-                    if !is_same_author {
-                        let actor = AtIdentifier::Did(selected_author_did);
+                    if !currently_notifs_view {self.view_stack.push_notifications_view();}
+                    if let View::Notifications(notifications) = self.view_stack.current_view() {
+                        self.loading = true;
+                        let _ = notifications.load_notifications(&mut self.api).await;
+                        self.loading = false;
+                    }
+                },
+                (KeyCode::Char('a'), KeyModifiers::NONE) => {
+                    if let View::Notifications(notifications) = self.view_stack.current_view() {
+                        let selected_author_did = &notifications.get_notification().author.did;
+                        let actor = AtIdentifier::Did(selected_author_did.clone());
                         match self.view_stack.push_author_feed_view(actor, &self.api).await {
                             Ok(_) => {},
                             Err(e) => {
@@ -376,36 +396,132 @@ impl App {
                                 self.error = Some(format!("Failed to load author feed: {}", e));
                             }
                         }
+                    } else if let Some(post) = self.view_stack.current_view().get_selected_post() {
+                        let selected_author_did = post.author.did.clone();
+                        
+                        let is_same_author = match self.view_stack.current_view() {
+                            View::AuthorFeed(author_feed) => {
+                                author_feed.profile.profile.did == selected_author_did
+                            },
+                            _ => false
+                        };
+                
+                        if !is_same_author {
+                            let actor = AtIdentifier::Did(selected_author_did);
+                            match self.view_stack.push_author_feed_view(actor, &self.api).await {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    log::info!("Error pushing author feed view: {:?}", e);
+                                    self.error = Some(format!("Failed to load author feed: {}", e));
+                                }
+                            }
+                        }
                     }
+                },
+                (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                    if let Some(session) = self.api.agent.get_session().await {
+                        // Get the logged-in user's DID
+                        let did = &session.did;
+                        let actor = AtIdentifier::Did(did.clone());
+                        
+                        match self.view_stack.push_author_feed_view(actor, &self.api).await {
+                            Ok(_) => {},
+                            Err(e) => {
+                                log::info!("Error pushing logged-in user feed view: {:?}", e);
+                                self.error = Some(format!("Failed to load your profile: {}", e));
+                            }
+                        }
+                    }
+                },
+                (KeyCode::Esc, _) => {
+                    self.view_stack.pop_view();
+                }
+                _ => {}
+            }
+        }
+    
+        self.update_status();
+    }
+    
+    //Helper function to handle command parsing and execution
+    async fn handle_command(&mut self, command: &str) -> Result<()> {
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        if parts.is_empty() {
+            return Ok(());
+        }
+    
+        match parts[0] {
+            "reply" => {
+                if let Some(post) = self.view_stack.current_view().get_selected_post() {
+                    let uri = post.uri.to_string();
+                    if self.view_stack.current_view().can_view_thread(&uri) {
+                        self.view_stack.push_thread_view(uri, &self.api).await?;
+                    }
+                    
+                    self.post_composer = Some(PostComposer::new(Some(post.uri.to_string())));
+                    self.composing = true;
                 }
             },
-            (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
-                if let Some(session) = self.api.agent.get_session().await {
-                    // Get the logged-in user's DID
-                    let did = &session.did;
-                    let actor = AtIdentifier::Did(did.clone());
-                    
-                    match self.view_stack.push_author_feed_view(actor, &self.api).await {
-                        Ok(_) => {},
-                        Err(e) => {
-                            log::info!("Error pushing logged-in user feed view: {:?}", e);
-                            self.error = Some(format!("Failed to load your profile: {}", e));
+            "post" => {
+                self.post_composer = Some(PostComposer::new(None));
+                self.composing = true;
+            },
+            "refresh" => {
+                self.refresh_current_view().await?;
+            },
+            "notifications" => {
+                self.view_stack.push_notifications_view();
+                if let View::Notifications(notifications) = self.view_stack.current_view() {
+                    self.loading = true;
+                    notifications.load_notifications(&mut self.api).await?;
+                    self.loading = false;
+                }
+            },
+            "timeline" => {
+                while self.view_stack.views.len() > 1 {
+                    self.view_stack.pop_view();
+                }
+            },
+            "follow" => {
+                self.handle_follow().await;
+            },
+            "like" => {
+                self.handle_like_post().await;
+            },
+            "repost" => {
+                self.handle_repost().await;
+            },
+            "profile" => {
+                //if we have an arg, handle argument to go to specific profile
+                if parts.len() > 1 {
+                    let actor = AtIdentifier::Handle(
+                        Handle::new(
+                            parts[1].to_string()
+                        ).unwrap());
+                    self.handle_get_profile(actor).await;
+                } 
+                // otherwise go to profile belonging to highlighted post
+                else {
+                    if let Some(post) = self.view_stack.current_view().get_selected_post() {
+                        let actor = &post.author.did;
+                        self.handle_get_profile(AtIdentifier::Did(actor.clone())).await;
+                    } else {
+                        if let View::Notifications(notif_view) =  self.view_stack.current_view() {
+                            let actor = &notif_view.get_notification().author.did;
+                            self.handle_get_profile(AtIdentifier::Did(actor.clone())).await;
                         }
                     }
                 }
-            },
-            (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+            }
+            "delete" => {
                 if let Some(post) = self.view_stack.current_view().get_selected_post() {
                     // Only allow deletion if the post author's DID matches the current user's DID
                     if let Some(session) = self.api.agent.get_session().await {
                         if post.author.did == session.did {
-                            let uri = post.uri.clone();
-                            match self.api.delete_post(&uri).await {
+                            match self.api.delete_post(&post.uri).await {
                                 Ok(_) => {
                                     self.status_line = "Post deleted successfully".to_string();
-                                    // Remove post from view immediately
-                                    self.view_stack.current_view().remove_post(&uri);
-                                    // Then refresh the view to ensure everything is in sync
+                                    // Refresh the current view to reflect the deletion
                                     self.refresh_current_view().await.ok();
                                 }
                                 Err(e) => {
@@ -416,42 +532,16 @@ impl App {
                             self.status_line = "You can only delete your own posts".to_string();
                         }
                     }
+                    let _ = self.refresh_current_view().await;
                 }
-            },
-            (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                let currently_notifications_view = if let View::Notifications(_view) = self.view_stack.current_view() {
-                    true
-                } else {
-                    false
-                };
-                if !currently_notifications_view {
-                    self.view_stack.push_notifications_view();
-                    if let View::Notifications(notifications) = self.view_stack.current_view() {
-                        self.loading = true;
-                        notifications.load_notifications(&mut self.api).await.ok();
-                        self.loading = false;
-                    }
-                }
-            },
-            (KeyCode::Char('f'), KeyModifiers::NONE) => {
-                self.handle_follow().await;
-            },
-            (KeyCode::Esc, KeyModifiers::NONE) => {
-                self.view_stack.pop_view();
-                match self.refresh_current_view().await {
-                    Ok(_) => log::info!("Successfully refreshed view"),
-                    Err(e) => {
-                        log::error!("Failed to refresh view: {:?}", e);
-                        self.error = Some(format!("Failed to refresh view: {}", e));
-                    }
-                }
-            },
-            _ => {}
+            }
+            _ => {
+                self.status_line = format!("Unknown command: {}", command);
+            }
         }
+        Ok(())
     }
-    self.update_status();
-    }
-    
+
     pub async fn run(mut self) -> Result<()> {
         // Terminal initialization
         enable_raw_mode()?;

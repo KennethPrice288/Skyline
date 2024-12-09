@@ -1,6 +1,6 @@
 pub mod feed;
 pub mod images;
-pub mod input;
+pub mod command_input;
 pub mod notifications;
 pub mod post;
 pub mod thread;
