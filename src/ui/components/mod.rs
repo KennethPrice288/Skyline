@@ -8,3 +8,4 @@ pub mod post_list;
 pub mod author_profile;
 pub mod author_feed;
 pub mod post_composer;
+pub mod login;

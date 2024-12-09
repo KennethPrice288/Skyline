@@ -61,6 +61,7 @@ pub struct CommandInput {
     pub history_position: Option<usize>,
     commands: HashSet<&'static str>,
     tab_completion: TabCompletion,
+    pub password_mode: bool,
 }
 
 impl CommandInput {
@@ -87,6 +88,7 @@ impl CommandInput {
             history_position: None,
             commands,
             tab_completion: TabCompletion::new(),
+            password_mode: false,
         }
     }
 
@@ -203,8 +205,14 @@ impl StatefulWidget for &CommandInput {
         // Render the main block
         block.render(area, buf);
 
+        
         // Render content with cursor
-        let content = self.content.clone();
+        let content = if self.password_mode {
+            // Show asterisks instead of actual content
+            "*".repeat(self.content.len())
+        } else {
+            self.content.clone()
+        };
         let (before_cursor, after_cursor) = content.split_at(self.cursor_position);
         
         let mut spans = vec![

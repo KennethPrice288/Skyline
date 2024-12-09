@@ -2,6 +2,8 @@ use anyhow::Result;
 use bsky_sdk::agent::{config::{Config, FileStore}, BskyAgent};
 use secrecy::{ExposeSecret, SecretString};
 
+const CONFIG_PATH: &str = "config.json";
+
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     #[error("Not authenticated")]
@@ -31,7 +33,7 @@ pub struct API {
 impl API {
     pub async fn new() -> Result<Self> {
         let agent_builder = BskyAgent::builder();
-        if let Ok(config) = Config::load(&FileStore::new("config.json")).await {
+        if let Ok(config) = Config::load(&FileStore::new(CONFIG_PATH)).await {
             if let Ok(agent) = agent_builder.config(config).build().await {
                 return Ok(Self { agent } );
             } else {
@@ -48,7 +50,7 @@ impl API {
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
         match self.agent.login(&identifier, password.expose_secret()).await {
             Ok(_) => {
-                self.agent.to_config().await.save(&FileStore::new("config.json"))
+                self.agent.to_config().await.save(&FileStore::new(CONFIG_PATH))
                 .await?;
                 Ok(())
             },
@@ -59,6 +61,17 @@ impl API {
                 _ => Err(ApiError::NetworkError(e.to_string()).into()),
             },
         }
+    }
+    
+    pub async fn logout(&mut self) -> Result<()> {
+        // Clear the stored session file
+        tokio::fs::remove_file(CONFIG_PATH).await.ok(); // Use ok() to ignore if file doesn't exist
+        
+        // Create a fresh agent
+        let agent_builder = BskyAgent::builder();
+        self.agent = agent_builder.build().await?;
+        
+        Ok(())
     }
 
     pub async fn get_timeline(

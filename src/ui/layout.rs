@@ -8,6 +8,50 @@ use ratatui::{
 use super::{components::{command_input::CommandInputState, post_composer::PostComposerState}, views::View};
 
 pub fn draw(f: &mut Frame, app: &mut App) {
+    if !app.authenticated {
+        // Show login view
+        if let Some(login_view) = &app.login_view {
+            let chunks = if app.command_mode {
+                Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Min(1),
+                        Constraint::Max(5),
+                        Constraint::Length(1),
+                    ])
+                    .split(f.area())
+            } else {
+                Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Min(1),
+                        Constraint::Length(1),
+                    ])
+                    .split(f.area())
+            };
+
+            f.render_widget(login_view, chunks[0]);
+            
+            // Use existing command mode logic
+            if app.command_mode {
+                let command_area = Block::default()
+                    .borders(Borders::ALL)
+                    .inner(chunks[1]);
+                
+                f.render_stateful_widget(
+                    &app.command_input,
+                    command_area,
+                    &mut CommandInputState { is_active: true }
+                );
+
+                f.render_widget(Paragraph::new(app.status_line.clone()), chunks[2]);
+            } else {
+                f.render_widget(Paragraph::new(app.status_line.clone()), chunks[1]);
+            }
+        }
+        return;
+    }
+
     let chunks = if app.command_mode {
         Layout::default()
             .direction(Direction::Vertical)

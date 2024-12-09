@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{components::{command_input::CommandInput, images::ImageManager, post_composer::PostComposer, post_list::PostList}, views::{View, ViewStack}};
+use super::{components::{command_input::CommandInput, images::ImageManager, login::LoginView, post_composer::PostComposer, post_list::PostList}, views::{View, ViewStack}};
 
 use ratatui::crossterm::{
     event::{self, Event},
@@ -37,6 +37,8 @@ pub struct App {
     pub composing: bool,
     pub command_input: CommandInput,
     pub command_mode: bool,
+    pub login_view: Option<LoginView>,
+    pub authenticated: bool,
 }
 
 impl App {
@@ -59,6 +61,8 @@ impl App {
             composing: false,
             command_input: CommandInput::new(),
             command_mode: false,
+            login_view: None,
+            authenticated: false,
         }
     }
     pub async fn login(&mut self, identifier: String, password: SecretString) -> Result<()> {
@@ -244,12 +248,37 @@ impl App {
                 (KeyCode::Esc, _) => {
                     self.command_mode = false;
                     self.command_input.clear();
+                    // Clear password mode if we were in it
+                    if self.command_input.password_mode {
+                        self.command_input.password_mode = false;
+                        if let Some(login_view) = &mut self.login_view {
+                            login_view.password_mode = false;
+                            login_view.username = None;
+                        }
+                    }
                 },
                 (KeyCode::Enter, _) => {
-                    if let Some(command) = self.command_input.submit_command() {
-                        self.command_mode = false;
-                        if let Err(e) = self.handle_command(&command.to_lowercase()).await {
-                            self.error = Some(format!("Command error: {}", e));
+                    if self.command_input.password_mode {
+                        // Handle password submission
+                        if let Some(password) = self.command_input.submit_command() {
+                            if let Err(e) = self.handle_login_input(password).await {
+                                if let Some(login_view) = &mut self.login_view {
+                                    login_view.error = Some(format!("Login error: {}", e));
+                                }
+                            }
+                        }
+                    } else {
+                        // Handle normal commands
+                        if let Some(command) = self.command_input.submit_command() {
+                            // Check if this is a login command before exiting command mode
+                            let is_login = command.starts_with("login ");
+                            if !is_login {
+                                self.command_mode = false;
+                            }
+                            
+                            if let Err(e) = self.handle_command(&command.to_lowercase()).await {
+                                self.error = Some(format!("Command error: {}", e));
+                            }
                         }
                     }
                 },
@@ -451,6 +480,32 @@ impl App {
         }
     
         match parts[0] {
+            "login" => {
+                if !self.authenticated {
+                    if let Some(login_view) = &mut self.login_view {
+                        if parts.len() != 2 {
+                            login_view.error = Some("Usage: :login username".to_string());
+                        } else {
+                            login_view.username = Some(parts[1].to_string());
+                            login_view.password_mode = true;
+                            self.command_input.clear();  // Clear the command input but stay in command mode
+                            self.command_input.password_mode = true;
+                        }
+                    }
+                }
+            },
+            "logout" => {
+                // Clear API session
+                self.api.logout().await?;
+                
+                // Reset app state
+                self.authenticated = false;
+                self.login_view = Some(LoginView::new());
+                self.view_stack = ViewStack::new(Arc::clone(&self.image_manager));
+                self.command_mode = false;
+                self.command_input.clear();
+                self.status_line = "Logged out successfully".to_string();
+            },
             "reply" => {
                 if let Some(post) = self.view_stack.current_view().get_selected_post() {
                     let uri = post.uri.to_string();
@@ -542,6 +597,36 @@ impl App {
         Ok(())
     }
 
+    async fn handle_login_input(&mut self, input: String) -> Result<()> {
+        if let Some(login_view) = &mut self.login_view {
+            if let Some(username) = &login_view.username {
+                login_view.loading = true;  // Set loading before login attempt
+                
+                match self.api.login(username.clone(), SecretString::new(input.into())).await {
+                    Ok(_) => {
+                        self.authenticated = true;
+                        self.login_view = None;
+                        self.command_input.password_mode = false;
+                        self.command_mode = false;
+                        
+                        self.loading = true;
+                        self.load_initial_posts().await;
+                        self.loading = false;
+                    }
+                    Err(e) => {
+                        login_view.loading = false;  // Clear loading on error
+                        login_view.error = Some(format!("Login failed: {}", e));
+                        login_view.password_mode = false;
+                        login_view.username = None;
+                        self.command_input.password_mode = false;
+                        self.command_input.clear();
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn run(mut self) -> Result<()> {
         // Terminal initialization
         enable_raw_mode()?;
@@ -550,35 +635,20 @@ impl App {
         let backend = ratatui::backend::CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
-        // Initialize app state
-        self.loading = true;
-        terminal.draw(|f| draw(f, &mut self))?;
-
-        // Handle authentication
+        // Check authentication
         if let Some(_session) = self.api.agent.get_session().await {
-            // Already authenticated
+            self.authenticated = true;
         } else {
-            let identifier = std::env::var("BSKY_IDENTIFIER")?;
-            let password = SecretString::new(std::env::var("BSKY_PASSWORD")?.into());
-            self.login(identifier, password).await?;
+            self.login_view = Some(LoginView::new());
         }
 
-        // Start update manager after authentication
-        if let Some(session) = self.api.agent.get_session().await {
-            self.update_manager.start(session.access_jwt.clone()).await?;
+        // Main event loop with authentication check
+        if self.authenticated {
+            self.load_initial_posts().await;
         }
 
-        // Load initial data
-        self.load_initial_posts().await;
-        self.loading = false;
-
-        // Main event loop
         let result = self.event_loop(&mut terminal).await;
-
-        // Cleanup
         self.cleanup(&mut terminal)?;
-
-        // Return any error that occurred
         result
     }
 
