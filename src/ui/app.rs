@@ -418,7 +418,7 @@ impl App {
                         }
                     }
                 },
-                (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                (KeyCode::Char('A'), KeyModifiers::SHIFT) => {
                     if let Some(session) = self.api.agent.get_session().await {
                         // Get the logged-in user's DID
                         let did = &session.did;
