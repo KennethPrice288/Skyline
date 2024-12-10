@@ -99,7 +99,7 @@ impl PostHeader {
         // Reply indicator
         if self.is_reply {
             spans.push(Span::styled(" · ".to_string(), Style::default().fg(Color::DarkGray)));
-            spans.push(Span::styled("↩️".to_string(), Style::default()));
+            spans.push(Span::styled("✉️".to_string(), Style::default()));
         }
 
         // Timestamp
