@@ -1,4 +1,3 @@
-use atrium_api::app::bsky::feed::defs::PostViewData;
 use ratatui::{buffer::Buffer, layout::Rect};
 use std::sync::Arc;
 
