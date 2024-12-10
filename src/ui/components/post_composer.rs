@@ -127,7 +127,7 @@ impl StatefulWidget for &PostComposer {
         // Render character count and status line
         let (count_text, count_color) = self.get_character_count_status();
         let status_line = Line::from(vec![
-            Span::raw("Press Ctrl+Enter to post, Esc to cancel | "),
+            Span::raw("Press Ctrl+S to post, Esc to cancel | "),
             Span::styled(count_text, Style::default().fg(count_color))
         ]);
         
