@@ -80,6 +80,8 @@ impl CommandInput {
         // commands.insert("block");
         // commands.insert("mute");
         commands.insert("delete");
+        commands.insert("login");
+        commands.insert("logout");
 
         Self {
             content: String::new(),
