@@ -4,6 +4,10 @@ A fully-featured terminal client for Bluesky, built in Rust. View your timeline,
 
 ![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
 
+## Demo
+
+![Skyline Demo](assets/demo.gif)
+
 ## Features
 
 - 🌈 Full-featured terminal interface with smooth scrolling and navigation
@@ -13,10 +17,6 @@ A fully-featured terminal client for Bluesky, built in Rust. View your timeline,
 - 🔔 Real-time notifications
 - 📱 Thread view support
 - 🎨 Clean, intuitive interface
-
-## Demo
-
-![Skyline Demo](assets/demo.gif)
 
 ## Prerequisites
 
