@@ -30,21 +30,13 @@ pub struct Post {
 
 impl Post {
     pub fn new(post: PostView, context: PostContext) -> Self {
-        let mut components: Vec<Box<dyn PostComponent>> = vec![];
-        let mut avatar = None;
         let mut quoted_post = None;
         let mut images = None;
+        let mut avatar = None;
         
         // Add avatar if available
-        if let Some(avatar_url) = &post.data.author.avatar {
-            components.push(Box::new(PostAvatar::new(
-                avatar_url.clone(),
-                context.clone(),
-            )));
-            avatar = Some(Box::new(PostAvatar::new(
-                avatar_url.clone(),
-                context.clone(),
-            )));
+        if let Some(avatar_uri) = &post.author.avatar {
+            avatar = Some(Box::new(PostAvatar::new(avatar_uri.clone(), context.clone())));
         }
 
         // Add other components
@@ -171,8 +163,8 @@ impl StatefulWidget for &mut Post {
 
         let mut current_y = inner_area.y;
         let max_y = inner_area.y + inner_area.height;
-
-        let horizontal_areas = if self.has_avatar() {
+        let has_avatar = self.has_avatar();
+        let horizontal_areas = if has_avatar {
             Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
@@ -183,19 +175,22 @@ impl StatefulWidget for &mut Post {
                     x: inner_area.x,
                     y: current_y,
                     width: inner_area.width,
-                    height: 1,
+                    height: 2,
                 })
             } else {
                 Layout::default()
                 .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Min(10),
+                ])
                 .split(Rect {
                     x: inner_area.x,
                     y: current_y,
                     width: inner_area.width,
-                    height: 1
+                    height: 2
                 })
             };
-        let has_avatar = self.has_avatar();
+        
         if has_avatar {
             self.avatar.as_mut().unwrap().render(horizontal_areas[0], buf, state);
             self.header.render(horizontal_areas[1], buf, state);
