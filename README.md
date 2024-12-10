@@ -14,6 +14,10 @@ A fully-featured terminal client for Bluesky, built in Rust. View your timeline,
 - 📱 Thread view support
 - 🎨 Clean, intuitive interface
 
+## Demo
+
+![Skyline Demo](assets/demo.gif)
+
 ## Prerequisites
 
 - Rust toolchain (rustc, cargo)
