@@ -75,8 +75,10 @@ impl PostHeader {
                 Style::default().fg(Color::Green),
             ),
             FollowingStatus::NotFollowing => (
-                "Not Following".to_string(),
-                Style::default().fg(Color::Gray),
+                // "Not Following".to_string(),
+                "".to_string(),
+                Style::default(),
+                // Style::default().fg(Color::Gray),
             ),
             FollowingStatus::Self_ => (
                 "You".to_string(),
@@ -107,9 +109,11 @@ impl PostHeader {
         spans.push(Span::raw(self.format_timestamp()));
 
         // Following status
-        spans.push(Span::styled(" · ".to_string(), Style::default().fg(Color::DarkGray)));
-        let (status_text, status_style) = self.following_status_style();
-        spans.push(Span::styled(status_text, status_style));
+        let (following_status, following_style) = self.following_status_style();
+        if !following_status.is_empty() {
+            spans.push(Span::styled(" · ".to_string(), Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(following_status, following_style));
+        }
 
         spans
     }
